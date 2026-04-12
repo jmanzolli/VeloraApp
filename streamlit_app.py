@@ -1,0 +1,2003 @@
+from __future__ import annotations
+
+import base64
+import json
+import time
+import mimetypes
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from ui.storage import delete_all_runs, delete_run
+
+ASSETS_DIR = Path(__file__).parent / "ui" / "assets"
+
+
+def load_asset_data_uri(path: Path) -> str:
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    mime_type, _ = mimetypes.guess_type(path.name)
+    return f"data:{mime_type or 'application/octet-stream'};base64,{encoded}"
+
+
+LOGO_PATH = ASSETS_DIR / "velora_logo.svg"
+PAGE_ICON_PATH = ASSETS_DIR / "velora_logo.png"
+LOGO_URI = load_asset_data_uri(LOGO_PATH)
+
+st.set_page_config(
+    page_title="Velora",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    page_icon=str(PAGE_ICON_PATH),
+)
+
+st.markdown(
+    """
+    <style>
+      :root {
+        --navy: #0b3552;
+        --navy-deep: #07273d;
+        --teal: #43b8a3;
+        --teal-soft: #e8f6f2;
+        --amber: #d9901a;
+        --red: #b54b32;
+        --panel: rgba(255,255,255,0.94);
+        --panel-strong: rgba(255,255,255,0.985);
+        --panel-border: rgba(11,53,82,0.12);
+        --ink: #14212b;
+        --muted: #6a7c89;
+        --surface: #f7fbfd;
+        --surface-strong: #ffffff;
+        --shadow-soft: 0 18px 42px rgba(12,44,66,0.08);
+      }
+      .stApp {
+        background:
+          radial-gradient(circle at top left, rgba(67,184,163,0.18), transparent 24%),
+          radial-gradient(circle at top right, rgba(217,144,26,0.16), transparent 20%),
+          linear-gradient(180deg, #eff4f7 0%, #e7eef3 100%);
+        color: var(--ink);
+      }
+      .block-container {
+        max-width: 1480px;
+        padding-top: 3.4rem;
+        padding-bottom: 2.2rem;
+      }
+      [data-testid="stHeader"] {
+        background: rgba(255,255,255,0.9);
+      }
+      [data-testid="stSidebar"] {
+        background:
+          radial-gradient(circle at top left, rgba(88,205,180,0.18), transparent 24%),
+          radial-gradient(circle at 80% 8%, rgba(213,232,112,0.16), transparent 18%),
+          linear-gradient(180deg, #0a2b44 0%, #092137 100%);
+        border-right: 1px solid rgba(255,255,255,0.08);
+      }
+      [data-testid="stSidebar"] > div:first-child {
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0)),
+          linear-gradient(180deg, rgba(10,43,68,0.94), rgba(9,33,55,0.98));
+      }
+      [data-testid="stSidebar"] .block-container {
+        padding-top: 1.35rem;
+      }
+      [data-testid="stSidebar"] * {
+        color: #eef6fb;
+      }
+      [data-testid="stSidebar"] label,
+      [data-testid="stSidebar"] .stMarkdown,
+      [data-testid="stSidebar"] p,
+      [data-testid="stSidebar"] span,
+      [data-testid="stSidebar"] small,
+      [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
+        color: #eef6fb !important;
+      }
+      [data-testid="stSidebar"] .stExpander {
+        background: rgba(255,255,255,0.065);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 20px;
+        box-shadow: 0 16px 36px rgba(3,17,29,0.18);
+        overflow: hidden;
+        backdrop-filter: blur(12px);
+      }
+      [data-testid="stSidebar"] .stExpander summary:hover,
+      [data-testid="stSidebar"] .stExpander summary:focus,
+      [data-testid="stSidebar"] .stExpander summary:active {
+        background: rgba(255,255,255,0.12) !important;
+      }
+      [data-testid="stSidebar"] .stExpander details {
+        border-radius: 14px;
+      }
+      [data-testid="stSidebar"] .stExpander summary {
+        background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.05)) !important;
+        border-radius: 18px;
+        color: #f5fbff !important;
+        padding-top: 0.2rem !important;
+        padding-bottom: 0.2rem !important;
+      }
+      [data-testid="stSidebar"] .stExpander details[open] > summary,
+      [data-testid="stSidebar"] .stExpander details[open] > summary:hover,
+      [data-testid="stSidebar"] .stExpander details[open] > summary:focus,
+      [data-testid="stSidebar"] .stExpander details[open] > summary:active {
+        background: rgba(255,255,255,0.06) !important;
+        color: #f5fbff !important;
+        border-bottom-left-radius: 12px !important;
+        border-bottom-right-radius: 12px !important;
+      }
+      [data-testid="stSidebar"] .stExpander summary p,
+      [data-testid="stSidebar"] .stExpander summary span {
+        color: #f5fbff !important;
+        font-weight: 600;
+      }
+      [data-testid="stSidebar"] .stExpander details[open] > summary p,
+      [data-testid="stSidebar"] .stExpander details[open] > summary span,
+      [data-testid="stSidebar"] .stExpander details[open] > summary svg {
+        color: #f5fbff !important;
+        fill: #f5fbff !important;
+      }
+      [data-testid="stSidebar"] .stNumberInput input,
+      [data-testid="stSidebar"] .stTextInput input,
+      [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"],
+      [data-testid="stSidebar"] .stFileUploader {
+        background: rgba(255,255,255,0.95);
+        border-radius: 14px;
+      }
+      button, a, [role="button"], summary, input, textarea, [data-baseweb="select"] {
+        transform: none !important;
+      }
+      .stApp button,
+      .stApp [role="button"],
+      .stApp summary,
+      .stApp [data-baseweb="select"] > div,
+      .stApp [data-baseweb="base-input"] > div,
+      .stApp [data-testid="stFileUploaderDropzone"] {
+        transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
+      }
+      button:hover, button:focus, button:active,
+      [role="button"]:hover, [role="button"]:focus, [role="button"]:active,
+      summary:hover, summary:focus, summary:active,
+      .stButton button:hover, .stButton button:focus, .stButton button:active,
+      .stDownloadButton button:hover, .stDownloadButton button:focus, .stDownloadButton button:active {
+        transform: none !important;
+        box-shadow: none !important;
+      }
+      .stButton button,
+      .stDownloadButton button {
+        background: linear-gradient(180deg, #ffffff, #eef4f7) !important;
+        color: #173042 !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(11,53,82,0.12) !important;
+        min-height: 2.8rem !important;
+        font-weight: 700 !important;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(12,44,66,0.06) !important;
+      }
+      .stButton button *,
+      .stDownloadButton button * {
+        color: #173042 !important;
+        fill: #173042 !important;
+      }
+      [data-testid="stSidebar"] .stButton button,
+      [data-testid="stSidebar"] .stDownloadButton button {
+        background: rgba(255,255,255,0.96) !important;
+        color: var(--navy) !important;
+        border: 1px solid rgba(11,53,82,0.14) !important;
+        min-height: 3rem !important;
+        font-weight: 700 !important;
+      }
+      [data-testid="stSidebar"] .stButton button:hover,
+      [data-testid="stSidebar"] .stButton button:focus,
+      [data-testid="stSidebar"] .stDownloadButton button:hover,
+      [data-testid="stSidebar"] .stDownloadButton button:focus {
+        background: #ffffff !important;
+        color: var(--navy) !important;
+        border-color: rgba(67,184,163,0.75) !important;
+        box-shadow: 0 0 0 1px rgba(67,184,163,0.25) !important;
+      }
+      .stButton button[kind="primary"] {
+        background: linear-gradient(90deg, var(--navy) 0%, #0d486f 100%) !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 14px 28px rgba(7,39,61,0.18) !important;
+      }
+      .stButton button[kind="primary"] *,
+      .stDownloadButton button[kind="primary"] * {
+        color: white !important;
+        fill: white !important;
+      }
+      .stButton button[kind="primary"]:hover,
+      .stButton button[kind="primary"]:focus,
+      .stButton button[kind="primary"]:active {
+        background: linear-gradient(90deg, var(--navy) 0%, #0d486f 100%) !important;
+        color: white !important;
+      }
+      [data-baseweb="select"] > div,
+      [data-baseweb="base-input"] > div,
+      [data-testid="stFileUploaderDropzone"] {
+        border-radius: 12px !important;
+      }
+      [data-testid="stSidebar"] input,
+      [data-testid="stSidebar"] textarea,
+      [data-testid="stSidebar"] [data-baseweb="input"] input,
+      [data-testid="stSidebar"] [data-baseweb="base-input"] input {
+        color: #173042 !important;
+        -webkit-text-fill-color: #173042 !important;
+      }
+      [data-testid="stSidebar"] input::placeholder,
+      [data-testid="stSidebar"] textarea::placeholder {
+        color: #7a8d9a !important;
+        -webkit-text-fill-color: #7a8d9a !important;
+      }
+      [data-testid="stSidebar"] [data-baseweb="select"] * {
+        color: #173042 !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        background: rgba(255,255,255,0.96) !important;
+        border: 1px dashed rgba(11,53,82,0.18) !important;
+        padding: 1rem 0.85rem !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] * {
+        color: #173042 !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] {
+        display: none !important;
+      }
+      [data-baseweb="select"] > div:hover,
+      [data-baseweb="base-input"] > div:hover,
+      [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: rgba(11,53,82,0.18) !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebar"] [data-baseweb="select"] > div:hover,
+      [data-testid="stSidebar"] [data-baseweb="base-input"] > div:hover,
+      [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: rgba(67,184,163,0.9) !important;
+        box-shadow: 0 0 0 1px rgba(67,184,163,0.22) !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stCaptionContainer"] *,
+      [data-testid="stSidebar"] .stCaption * {
+        color: rgba(238,246,251,0.78) !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-testid="stWidgetLabel"] {
+        color: #eef6fb !important;
+      }
+      [data-testid="stSidebar"] .stSlider label,
+      [data-testid="stSidebar"] .stSlider small,
+      [data-testid="stSidebar"] .stSlider p,
+      [data-testid="stSidebar"] .stSlider span {
+        color: #eef6fb !important;
+        -webkit-text-fill-color: #eef6fb !important;
+      }
+      [data-testid="stSidebar"] .stSlider * {
+        color: #eef6fb !important;
+        fill: #eef6fb !important;
+        stroke: #eef6fb !important;
+      }
+      [data-testid="stSidebar"] .stSlider [aria-hidden="true"],
+      [data-testid="stSidebar"] .stSlider [data-testid*="TickBar"],
+      [data-testid="stSidebar"] .stSlider [data-testid*="tickBar"],
+      [data-testid="stSidebar"] .stSlider [class*="tick"],
+      [data-testid="stSidebar"] .stSlider [class*="Tick"],
+      [data-testid="stSidebar"] .stSlider [class*="mark"],
+      [data-testid="stSidebar"] .stSlider [class*="Mark"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      [data-testid="stSidebar"] .stSlider div[role="slider"] {
+        background: #43b8a3 !important;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.18) !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div > div {
+        background: rgba(255,255,255,0.22) !important;
+      }
+      [data-testid="stSidebar"] .stSlider input,
+      [data-testid="stSidebar"] .stSlider input:hover,
+      [data-testid="stSidebar"] .stSlider input:focus,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] input,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] input {
+        color: #eef6fb !important;
+        -webkit-text-fill-color: #eef6fb !important;
+        background: #49677d !important;
+        border: 1px solid rgba(255,255,255,0.22) !important;
+        border-radius: 6px !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"],
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] {
+        background: #49677d !important;
+        border-radius: 6px !important;
+        border: 1px solid rgba(255,255,255,0.22) !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] *,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] * {
+        background-color: #49677d !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] > div,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] > div,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] > div:hover,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] > div:hover,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] > div:focus-within,
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] > div:focus-within {
+        background: #49677d !important;
+        border: 1px solid rgba(255,255,255,0.22) !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] input[disabled],
+      [data-testid="stSidebar"] .stSlider [data-baseweb="base-input"] input[disabled] {
+        opacity: 1 !important;
+        color: #eef6fb !important;
+        -webkit-text-fill-color: #eef6fb !important;
+        background: #49677d !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="input"] {
+        display: none !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-testid*="TickBar"] *,
+      [data-testid="stSidebar"] .stSlider [data-testid*="tickBar"] *,
+      [data-testid="stSidebar"] .stSlider [class*="tick"] *,
+      [data-testid="stSidebar"] .stSlider [class*="Tick"] *,
+      [data-testid="stSidebar"] .stSlider [class*="mark"] *,
+      [data-testid="stSidebar"] .stSlider [class*="Mark"] *,
+      [data-testid="stSidebar"] .stSlider div[data-baseweb="slider"] + div *,
+      [data-testid="stSidebar"] .stSlider div[data-baseweb="slider"] ~ div * {
+        color: rgba(238,246,251,0.92) !important;
+        fill: rgba(238,246,251,0.92) !important;
+        stroke: rgba(238,246,251,0.92) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.95rem 1.3rem;
+        margin-top: 0.15rem;
+        border-radius: 22px 22px 0 0;
+        background: linear-gradient(90deg, var(--navy) 0%, #0d486f 100%);
+        color: white;
+        box-shadow: 0 10px 30px rgba(7,39,61,0.15);
+      }
+      .topbar-title {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        font-size: 1.4rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+      .brand-lockup {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .brand-logo {
+        height: 3.4rem;
+        width: auto;
+      }
+      .sidebar-brand-card {
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 1rem;
+        padding: 1.1rem 1rem 1rem;
+        border-radius: 24px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background:
+          radial-gradient(circle at top right, rgba(215,243,106,0.18), transparent 30%),
+          linear-gradient(145deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05));
+        box-shadow: 0 20px 42px rgba(2,14,24,0.22);
+        backdrop-filter: blur(14px);
+      }
+      .sidebar-brand-card::after {
+        content: "";
+        position: absolute;
+        inset: auto -12% -34% auto;
+        width: 9rem;
+        height: 9rem;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(67,200,176,0.28), rgba(67,200,176,0));
+      }
+      .sidebar-brand-top {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+      }
+      .sidebar-brand-logo {
+        width: 3.4rem;
+        height: 3.4rem;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.12);
+        padding: 0.3rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+      }
+      .sidebar-kicker {
+        margin: 0;
+        color: rgba(238,246,251,0.72);
+        font-size: 0.72rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .sidebar-wordmark {
+        margin: 0.18rem 0 0;
+        font-size: 1.42rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        color: #ffffff;
+      }
+      .sidebar-tagline {
+        margin: 0.85rem 0 0;
+        font-size: 0.9rem;
+        line-height: 1.45;
+        color: rgba(238,246,251,0.82);
+      }
+      .sidebar-stat-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-top: 0.95rem;
+      }
+      .sidebar-stat {
+        padding: 0.7rem 0.75rem;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .sidebar-stat-label {
+        display: block;
+        color: rgba(238,246,251,0.68);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .sidebar-stat-value {
+        display: block;
+        margin-top: 0.3rem;
+        color: #ffffff;
+        font-size: 0.96rem;
+        font-weight: 700;
+      }
+      .sidebar-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin: 1rem 0 0.45rem;
+      }
+      .sidebar-section-title {
+        margin: 0;
+        color: #ffffff;
+        font-size: 0.98rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+      .sidebar-section-meta {
+        margin: 0.12rem 0 0;
+        color: rgba(238,246,251,0.7);
+        font-size: 0.77rem;
+      }
+      .sidebar-help {
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .sidebar-help-badge {
+        width: 1.55rem;
+        height: 1.55rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.14);
+        color: #dff8ff;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: help;
+        line-height: 1;
+      }
+      .sidebar-help-panel {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 0.45rem);
+        width: 15rem;
+        padding: 0.7rem 0.8rem;
+        border-radius: 14px;
+        background: rgba(4,19,31,0.96);
+        border: 1px solid rgba(138,247,214,0.18);
+        color: #ecfbff;
+        font-size: 0.77rem;
+        line-height: 1.45;
+        box-shadow: 0 18px 32px rgba(0,0,0,0.28);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(6px);
+        transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+        z-index: 20;
+      }
+      .sidebar-help:hover .sidebar-help-panel,
+      .sidebar-help:focus-within .sidebar-help-panel {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+      }
+      .sidebar-note {
+        margin: 0.8rem 0 1rem;
+        padding: 0.8rem 0.9rem;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: rgba(238,246,251,0.8);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+      .sidebar-upload-status {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin: 0.35rem 0 0.15rem;
+        padding: 0.6rem 0.7rem;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .sidebar-upload-icon {
+        width: 1.9rem;
+        height: 1.9rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: rgba(67,184,163,0.18);
+        color: #d7fbf4;
+        font-size: 1rem;
+        flex: 0 0 auto;
+      }
+      .sidebar-upload-text {
+        min-width: 0;
+      }
+      .sidebar-upload-name {
+        color: #f5fbff;
+        font-size: 0.92rem;
+        font-weight: 600;
+        line-height: 1.1;
+        word-break: break-word;
+      }
+      .sidebar-upload-meta {
+        color: rgba(238,246,251,0.78);
+        font-size: 0.78rem;
+        margin-top: 0.18rem;
+      }
+      .topbar-nav {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+      .topbar-pill {
+        padding: 0.45rem 0.8rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.07);
+        font-size: 0.88rem;
+      }
+      .topbar-pill:hover,
+      .topbar-pill:focus,
+      .topbar-pill:active {
+        background: rgba(255,255,255,0.07);
+        border-color: rgba(255,255,255,0.14);
+      }
+      .hero {
+        padding: 1.15rem 1.35rem 1.25rem;
+        border-radius: 0 0 22px 22px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,250,252,1));
+        border: 1px solid var(--panel-border);
+        border-top: none;
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow-soft);
+      }
+      .hero h1 {
+        margin: 0;
+        font-size: 1.95rem;
+        line-height: 1.1;
+        color: var(--ink);
+      }
+      .hero p {
+        margin: 0.6rem 0 0;
+        font-size: 1rem;
+        max-width: 60rem;
+        color: var(--muted);
+      }
+      .subhero {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.85rem;
+        margin-top: 1rem;
+      }
+      .subhero-card {
+        padding: 0.85rem 1rem;
+        border-radius: 16px;
+        background: white;
+        border: 1px solid var(--panel-border);
+      }
+      .subhero-label {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .subhero-value {
+        margin-top: 0.3rem;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--navy);
+      }
+      .dashboard-section {
+        background: var(--panel-strong);
+        border: 1px solid var(--panel-border);
+        border-radius: 20px;
+        padding: 1rem 1rem 0.75rem;
+        box-shadow: var(--shadow-soft);
+        margin-bottom: 1rem;
+      }
+      .control-shell {
+        padding-bottom: 1rem;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.98), rgba(245,250,252,0.98));
+      }
+      .panel-lead {
+        margin: 0 0 0.85rem;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.5;
+      }
+      .insight-shell {
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,247,250,0.98));
+      }
+      .comparison-shell,
+      .action-shell {
+        padding-bottom: 1rem;
+      }
+      .section-divider {
+        height: 1px;
+        margin: 0.9rem 0 0.95rem;
+        background: linear-gradient(90deg, rgba(11,53,82,0.04), rgba(11,53,82,0.16), rgba(11,53,82,0.04));
+      }
+      .section-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.8rem;
+      }
+      .section-title h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        color: var(--ink);
+      }
+      .section-chip {
+        padding: 0.34rem 0.7rem;
+        border-radius: 999px;
+        background: var(--teal-soft);
+        color: #0f6d5d;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .section-chip:hover,
+      .section-chip:focus,
+      .section-chip:active {
+        background: var(--teal-soft);
+        color: #0f6d5d;
+      }
+      .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.9rem;
+        margin-bottom: 1rem;
+      }
+      .kpi-card {
+        padding: 1rem 1rem 0.9rem;
+        border-radius: 18px;
+        background: white;
+        border: 1px solid var(--panel-border);
+        min-height: 120px;
+      }
+      .kpi-label {
+        font-size: 0.84rem;
+        color: var(--muted);
+        margin-bottom: 0.45rem;
+      }
+      .kpi-value {
+        font-size: 2.25rem;
+        line-height: 1;
+        font-weight: 700;
+        color: var(--navy);
+      }
+      .kpi-note {
+        margin-top: 0.45rem;
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+      .report-shell {
+        background: white;
+        border: 1px solid var(--panel-border);
+        border-radius: 18px;
+        padding: 1rem 1.15rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+      }
+      .map-control-panel {
+        margin-bottom: 0.95rem;
+        padding: 1rem;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(232,247,241,0.78), rgba(255,255,255,0.98));
+        border: 1px solid rgba(11,53,82,0.08);
+      }
+      .map-control-title {
+        margin: 0 0 0.3rem;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--navy);
+      }
+      .map-control-copy {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .map-mini-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin: 0.9rem 0 0.25rem;
+      }
+      .map-mini-stat {
+        padding: 0.8rem 0.9rem;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.86);
+        border: 1px solid rgba(11,53,82,0.08);
+      }
+      .map-mini-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .map-mini-value {
+        display: block;
+        margin-top: 0.25rem;
+        color: var(--navy);
+        font-size: 1.15rem;
+        font-weight: 700;
+      }
+      .upload-section-copy {
+        margin: 0 0 0.75rem;
+        color: rgba(238,246,251,0.76);
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+      .stDataFrame, .stPlotlyChart {
+        background: white;
+        border-radius: 18px;
+        border: 1px solid rgba(11,53,82,0.08);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+      }
+      div[data-testid="stMetric"] {
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,249,252,0.98));
+        border: 1px solid rgba(11,53,82,0.08);
+        border-radius: 16px;
+        padding: 0.85rem 0.9rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.86);
+      }
+      div[data-testid="stMetricLabel"] {
+        color: var(--muted) !important;
+      }
+      div[data-testid="stMetricValue"] {
+        color: var(--navy) !important;
+      }
+      div[data-testid="stMetricDelta"] {
+        color: #0f6d5d !important;
+      }
+      div[data-testid="stAlert"] {
+        border-radius: 16px !important;
+        border: 1px solid rgba(11,53,82,0.08) !important;
+        background: linear-gradient(180deg, rgba(235,244,252,0.9), rgba(255,255,255,0.96)) !important;
+      }
+      div[data-testid="stInfo"] {
+        background: linear-gradient(180deg, rgba(227,240,252,0.92), rgba(246,250,253,0.96)) !important;
+      }
+      div[data-testid="stSuccess"] {
+        background: linear-gradient(180deg, rgba(231,247,241,0.96), rgba(248,252,250,0.98)) !important;
+      }
+      div[data-testid="stWarning"] {
+        background: linear-gradient(180deg, rgba(252,243,226,0.96), rgba(255,250,245,0.98)) !important;
+      }
+      .stMultiSelect [data-baseweb="tag"] {
+        background: rgba(67,184,163,0.14) !important;
+        border: 1px solid rgba(67,184,163,0.22) !important;
+      }
+      .stMultiSelect [data-baseweb="tag"] * {
+        color: var(--navy) !important;
+      }
+      @media (max-width: 1200px) {
+        .kpi-grid, .subhero, .map-mini-stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 820px) {
+        .kpi-grid, .subhero, .map-mini-stats {
+          grid-template-columns: 1fr;
+        }
+        .brand-logo {
+          height: 2.4rem;
+        }
+        .sidebar-stat-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+    <div class="topbar">
+      <div class="topbar-title">
+        <div class="brand-lockup">
+          <img class="brand-logo" src="__PATHPILOT_LOGO__" alt="Velora logo" />
+          <span>Velora Control Center</span>
+        </div>
+      </div>
+      <div class="topbar-nav">
+        <span class="topbar-pill">Data</span>
+        <span class="topbar-pill">Scenarios</span>
+        <span class="topbar-pill">City Report</span>
+      </div>
+    </div>
+    <div class="hero">
+      <h1>Plan better cycling networks with Velora</h1>
+      <p>Upload your station data and street network, run the optimizer, and review the recommended plan, map, and city-ready report.</p>
+      <div class="subhero">
+        <div class="subhero-card">
+          <div class="subhero-label">Workflow</div>
+          <div class="subhero-value">Upload, run, decide</div>
+        </div>
+        <div class="subhero-card">
+          <div class="subhero-label">What it does</div>
+          <div class="subhero-value">Tests network upgrade options</div>
+        </div>
+        <div class="subhero-card">
+          <div class="subhero-label">What you get</div>
+          <div class="subhero-value">Map, choices, and report</div>
+        </div>
+      </div>
+    </div>
+    """.replace("__PATHPILOT_LOGO__", LOGO_URI),
+    unsafe_allow_html=True,
+)
+
+def format_cost(value: float) -> str:
+    return f"{value:,.0f}"
+
+
+def format_compact_number(value: float) -> str:
+    if abs(value) >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if abs(value) >= 1_000:
+        return f"{value / 1_000:.1f}k"
+    return f"{value:,.0f}"
+
+
+def format_uploaded_size(num_bytes: int) -> str:
+    if num_bytes >= 1024 * 1024:
+        return f"{num_bytes / (1024 * 1024):.1f} MB"
+    if num_bytes >= 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes} B"
+
+
+def open_panel(class_name: str = "") -> None:
+    panel_class = f"dashboard-section {class_name}".strip()
+    st.markdown(f'<div class="{panel_class}">', unsafe_allow_html=True)
+
+
+def close_panel() -> None:
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_panel_header(title: str, description: str | None = None) -> None:
+    st.markdown(f"### {title}")
+    if description:
+        st.markdown(f'<p class="panel-lead">{description}</p>', unsafe_allow_html=True)
+
+
+def render_station_preview(stations_upload) -> None:
+    stations_preview = pd.read_csv(stations_upload) if stations_upload.name.endswith(".csv") else pd.read_excel(stations_upload)
+    preview_open = st.session_state.get("station_preview_open", True)
+    with st.expander("Station preview", expanded=preview_open):
+        st.caption("Preview of the first uploaded station rows.")
+        st.dataframe(stations_preview.head(10), use_container_width=True)
+    stations_upload.seek(0)
+
+
+def render_run_details(run_payload: dict[str, Any]) -> None:
+    with st.expander("Run details"):
+        st.write("Run ID:", run_payload["run_id"])
+        st.write("Created at:", run_payload["created_at"])
+        st.write("Uploaded stations:", run_payload["station_count"])
+        st.write("Generated candidate locations:", run_payload["candidate_count"])
+        st.write("Candidate link pairs:", run_payload["link_pair_count"])
+        st.write("Optimization population rows:", run_payload["population_rows"])
+        st.dataframe(pd.DataFrame(run_payload["pareto_rows"]).head(20), use_container_width=True)
+
+
+def render_sidebar_upload_status(uploaded_file, kind_label: str) -> None:
+    if uploaded_file is None:
+        return
+    st.sidebar.markdown(
+        f"""
+        <div class="sidebar-upload-status">
+          <div class="sidebar-upload-icon">✓</div>
+          <div class="sidebar-upload-text">
+            <div class="sidebar-upload-name">{uploaded_file.name}</div>
+            <div class="sidebar-upload-meta">{kind_label} ready · {format_uploaded_size(len(uploaded_file.getvalue()))}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_sidebar_brand() -> None:
+    st.sidebar.markdown(
+        f"""
+        <div class="sidebar-brand-card">
+          <div class="sidebar-brand-top">
+            <img class="sidebar-brand-logo" src="{LOGO_URI}" alt="Velora logo" />
+            <div>
+              <p class="sidebar-kicker">Urban Cycling Studio</p>
+              <p class="sidebar-wordmark">Velora</p>
+            </div>
+          </div>
+          <p class="sidebar-tagline">Design safer, smarter bike networks with a control panel built for exploration, trade-offs, and decisions.</p>
+          <div class="sidebar-stat-row">
+            <div class="sidebar-stat">
+              <span class="sidebar-stat-label">Mode</span>
+              <span class="sidebar-stat-value">Planner view</span>
+            </div>
+            <div class="sidebar-stat">
+              <span class="sidebar-stat-label">Outputs</span>
+              <span class="sidebar-stat-value">Maps + report</span>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_sidebar_section_heading(title: str, subtitle: str, help_text: str) -> None:
+    st.sidebar.markdown(
+        f"""
+        <div class="sidebar-section-head">
+          <div>
+            <p class="sidebar-section-title">{title}</p>
+            <p class="sidebar-section-meta">{subtitle}</p>
+          </div>
+          <div class="sidebar-help" tabindex="0" aria-label="More information about {title}">
+            <span class="sidebar-help-badge">?</span>
+            <div class="sidebar-help-panel">{help_text}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def generate_report_markdown(run_payload: dict[str, Any]) -> str:
+    solutions = run_payload["solutions"]
+    recommended_name = "Balanced" if "Balanced" in solutions else next(iter(solutions))
+    recommended_solution = solutions[recommended_name]
+    recommended = recommended_solution["metrics"]
+    best_demand = solutions.get("Best Demand", {}).get("metrics", {})
+    best_stress = solutions.get("Best Stress", {}).get("metrics", {})
+    best_cost = solutions.get("Best Cost", {}).get("metrics", {})
+
+    selected_station_rows = pd.DataFrame(recommended_solution.get("selected_stations", []))
+    if not selected_station_rows.empty:
+        if "trips" not in selected_station_rows.columns:
+            selected_station_rows["trips"] = pd.to_numeric(
+                selected_station_rows.get("Trips", 0.0),
+                errors="coerce",
+            ).fillna(0.0)
+        if "station_name" not in selected_station_rows.columns:
+            selected_station_rows["station_name"] = selected_station_rows.get("Station_Name", "Unknown station")
+        if "estimated_docks" not in selected_station_rows.columns:
+            selected_station_rows["estimated_docks"] = pd.to_numeric(
+                selected_station_rows.get("estimated_docks", selected_station_rows.get("Estimated_Docks", 0.0)),
+                errors="coerce",
+            ).fillna(0.0)
+        selected_station_rows = selected_station_rows.sort_values("trips", ascending=False).head(10)
+
+    selected_links_df = pd.DataFrame(recommended_solution.get("selected_links", []))
+    if not selected_links_df.empty:
+        if "total_length" not in selected_links_df.columns:
+            selected_links_df["total_length"] = pd.to_numeric(
+                selected_links_df.get("length", 0.0),
+                errors="coerce",
+            ).fillna(0.0)
+        if "from_station" not in selected_links_df.columns:
+            selected_links_df["from_station"] = selected_links_df.get("from", "Unknown")
+        if "to_station" not in selected_links_df.columns:
+            selected_links_df["to_station"] = selected_links_df.get("to", "Unknown")
+        if "mean_lts" not in selected_links_df.columns:
+            selected_links_df["mean_lts"] = pd.to_numeric(
+                selected_links_df.get("lts", 0.0),
+                errors="coerce",
+            ).fillna(0.0)
+        selected_links_df = selected_links_df.sort_values("total_length", ascending=False).head(10)
+
+    demand_gap = stress_reduction = cost_reduction = None
+    if best_demand:
+        demand_gap = float(best_demand["demand"]) - float(recommended["demand"])
+        stress_reduction = float(best_demand["stress"]) - float(recommended["stress"])
+        cost_reduction = float(best_demand["cost"]) - float(recommended["cost"])
+
+    config = run_payload.get("config", {})
+    lines = [
+        "# City Decision Report",
+        "",
+        "## Executive Summary",
+        (
+            f"The recommended implementation strategy is the **{recommended_name} solution**. "
+            f"It covers approximately **{recommended['demand']:,.0f} trips**, using "
+            f"**{int(recommended['selected_stations'])} stations** and **{int(recommended['selected_links'])} upgraded links**, "
+            f"with total modeled stress of **{recommended['stress']:,.1f}** and total modeled cost of **{recommended['cost']:,.0f}**."
+        ),
+    ]
+    if demand_gap is not None and stress_reduction is not None and cost_reduction is not None:
+        lines.append(
+            f"Compared with the demand-maximizing alternative, this recommendation gives up only **{demand_gap:,.0f} trips** "
+            f"while reducing modeled stress by **{stress_reduction:,.1f}** and reducing modeled cost by **{cost_reduction:,.0f}**."
+        )
+    lines.extend(
+        [
+            "",
+            "## Recommended Actions for the City",
+            "1. Approve the balanced package as the preferred near-term investment program.",
+            "2. Prioritize station implementation in the highest-demand selected locations listed below.",
+            "3. Prioritize corridor upgrades along the selected links identified below to secure low-stress network continuity.",
+            "4. Use the high-demand and low-stress solutions as boundary cases for budget and policy negotiations, but not as the default implementation plan.",
+            "",
+            "## Priority Station Actions",
+        ]
+    )
+    if not selected_station_rows.empty:
+        for _, row in selected_station_rows.iterrows():
+            lines.append(
+                f"- **{row['station_name']}**: demand {float(row['trips']):,.0f} trips, estimated dock need {float(row['estimated_docks']):,.0f}."
+            )
+    else:
+        lines.append("- No station summary could be derived from the current run outputs.")
+
+    lines.extend(["", "## Priority Link Upgrade Actions"])
+    if not selected_links_df.empty:
+        for _, row in selected_links_df.iterrows():
+            lines.append(
+                f"- **{row['from_station']} to {row['to_station']}**: approximately {float(row['total_length'])/1000.0:.2f} km, "
+                f"mean current stress {float(row['mean_lts']):.2f}."
+            )
+    else:
+        lines.append("- No link summary could be derived from the current run outputs.")
+
+    lines.extend(
+        [
+            "",
+            "## Policy Interpretation",
+            "The balanced solution is the most suitable package for decision-makers because it preserves most of the attainable demand while avoiding the extreme cost and stress associated with the demand-maximizing alternative.",
+            "This means the city should emphasize targeted station deployment in high-demand areas and selective low-stress corridor upgrades, rather than pursuing network densification everywhere at once.",
+            "",
+            "## Implementation Guidance",
+            "1. Deliver the selected stations and corridor upgrades as one coordinated package rather than separate projects.",
+            "2. Sequence early implementation around the highest-demand stations first, then add the remaining selected corridors to complete continuity.",
+            "3. Re-run the optimization when cost assumptions, budget ceilings, or policy constraints change.",
+            "",
+            "## Cost Assumptions Used in This Run",
+            f"- Station fixed cost: {float(config.get('station_fixed_cost', 0.0)):,.0f}",
+            f"- Dock or capacity unit cost: {float(config.get('dock_unit_cost', 0.0)):,.0f}",
+            f"- Link upgrade cost for LTS 1: {float(config.get('link_cost_lts1_per_km', 0.0)):,.0f} per km",
+            f"- Link upgrade cost for LTS 2: {float(config.get('link_cost_lts2_per_km', 0.0)):,.0f} per km",
+            f"- Link upgrade cost for LTS 3: {float(config.get('link_cost_lts3_per_km', 0.0)):,.0f} per km",
+            f"- Link upgrade cost for LTS 4: {float(config.get('link_cost_lts4_per_km', 0.0)):,.0f} per km",
+        ]
+    )
+    if best_stress or best_cost or best_demand:
+        lines.extend(["", "## Comparison to Other Representative Alternatives"])
+        if best_stress:
+            lines.append(
+                f"- **Best Stress**: {best_stress['demand']:,.0f} trips, stress {best_stress['stress']:,.1f}, cost {best_stress['cost']:,.0f}."
+            )
+        if best_cost:
+            lines.append(
+                f"- **Best Cost**: {best_cost['demand']:,.0f} trips, stress {best_cost['stress']:,.1f}, cost {best_cost['cost']:,.0f}."
+            )
+        if best_demand:
+            lines.append(
+                f"- **Best Demand**: {best_demand['demand']:,.0f} trips, stress {best_demand['stress']:,.1f}, cost {best_demand['cost']:,.0f}."
+            )
+    return "\n".join(lines)
+
+
+render_sidebar_brand()
+backend_url = st.sidebar.text_input("Backend URL", value="http://127.0.0.1:8000")
+
+render_sidebar_section_heading(
+    "1. Data Files",
+    "Bring in the inputs for this scenario.",
+    "Upload the demand table for existing or candidate stations and the street network file with geometry plus LTS values. Velora uses these two files to build the study area and test upgrades.",
+)
+with st.sidebar.expander("Open data setup", expanded=True):
+    st.markdown(
+        '<p class="upload-section-copy">Upload one station file and one street network file to start a scenario.</p>',
+        unsafe_allow_html=True,
+    )
+    stations_upload = st.file_uploader(
+        "Station file",
+        type=["csv", "xlsx", "xls"],
+        help="Needs station name, coordinates, and trip totals. The app also accepts names like station, lat, lon, and total_trips.",
+    )
+    render_sidebar_upload_status(stations_upload, "Station file")
+    network_upload = st.file_uploader(
+        "Street network",
+        type=["gpkg", "geojson", "json", "shp", "parquet"],
+        help="Needs geometry and lts. Length is optional.",
+    )
+    render_sidebar_upload_status(network_upload, "Network file")
+
+render_sidebar_section_heading(
+    "2. Study Area Settings",
+    "Control how far Velora explores nearby options.",
+    "These settings decide how many alternative station locations are generated and how much surrounding network is included. Increase them to explore more of the city, or keep them tighter for faster runs.",
+)
+with st.sidebar.expander("Open study area controls", expanded=True):
+    candidate_points_per_station = st.slider(
+        "Extra station options",
+        0,
+        5,
+        2,
+        help="How many nearby station alternatives to test for each uploaded station.",
+    )
+    station_buffer_meters = st.slider(
+        "Station search radius (m)",
+        25,
+        500,
+        150,
+        step=25,
+        help="How far the model can move a station when testing alternatives.",
+    )
+    area_of_interest_buffer_meters = st.slider(
+        "Network clip buffer (m)",
+        250,
+        4000,
+        2000,
+        step=250,
+        help="How much surrounding network to include around the study area.",
+    )
+
+render_sidebar_section_heading(
+    "3. Cost Assumptions",
+    "Shape the investment logic behind every plan.",
+    "Use this section to define station, capacity, and link-upgrade costs. The optimizer balances these values against demand coverage and stress reduction, so even small changes here can shift the recommended plan.",
+)
+with st.sidebar.expander("Open cost model", expanded=True):
+    station_fixed_cost = st.number_input(
+        "Station fixed cost",
+        min_value=0.0,
+        value=5000.0,
+        step=500.0,
+        help="Base cost for each selected station.",
+    )
+    dock_unit_cost = st.number_input(
+        "Capacity unit cost",
+        min_value=0.0,
+        value=1000.0,
+        step=50.0,
+        help="Cost per unit of station capacity.",
+    )
+    st.caption("Link upgrade costs are entered per kilometer.")
+    link_cost_lts1_per_km = st.number_input("Link cost for LTS 1 (per km)", min_value=0.0, value=0.0, step=10000.0)
+    link_cost_lts2_per_km = st.number_input("Link cost for LTS 2 (per km)", min_value=0.0, value=5000.0, step=1000.0)
+    link_cost_lts3_per_km = st.number_input("Link cost for LTS 3 (per km)", min_value=0.0, value=8000.0, step=1000.0)
+    link_cost_lts4_per_km = st.number_input("Link cost for LTS 4 (per km)", min_value=0.0, value=10000.0, step=1000.0)
+
+render_sidebar_section_heading(
+    "4. Network Requirements",
+    "Set the minimum scale of the final network.",
+    "These thresholds act as guardrails. They tell Velora the smallest number of stations and upgraded links that still count as an acceptable solution.",
+)
+with st.sidebar.expander("Open network rules", expanded=True):
+    station_minimum = st.number_input(
+        "Minimum stations",
+        min_value=1,
+        value=15,
+        step=1,
+        help="Smallest number of stations the model must keep.",
+    )
+    link_minimum = st.number_input(
+        "Minimum links",
+        min_value=1,
+        value=50,
+        step=1,
+        help="Smallest number of links the model must select.",
+    )
+
+render_sidebar_section_heading(
+    "5. Optimization Engine",
+    "Tune the search depth and repeatability.",
+    "Population size and generations control how aggressively the evolutionary search explores alternatives. Use the seed to reproduce a run when you want a consistent comparison.",
+)
+with st.sidebar.expander("Open engine controls", expanded=True):
+    population_size = st.slider(
+        "Population size",
+        40,
+        300,
+        120,
+        step=20,
+        help="Higher values test more options but take longer.",
+    )
+    generations = st.slider(
+        "Generations",
+        4,
+        40,
+        16,
+        step=2,
+        help="More generations usually improve results but take longer.",
+    )
+    seed = st.number_input(
+        "Random seed",
+        min_value=0,
+        value=42,
+        step=1,
+        help="Keep this fixed if you want the same run again.",
+    )
+
+st.sidebar.markdown(
+    '<div class="sidebar-note">Start with the default setup, run one scenario, then refine assumptions after you see the first trade-off chart and network map.</div>',
+    unsafe_allow_html=True,
+)
+run_button = st.sidebar.button("Run Optimization", type="primary", use_container_width=True)
+if run_button:
+    st.session_state["station_preview_open"] = False
+
+
+def get_json(url: str) -> Any:
+    with urlopen(url) as response:
+        return json_loads_bytes(response.read())
+
+
+def json_loads_bytes(payload: bytes) -> Any:
+    import json
+
+    return json.loads(payload.decode("utf-8"))
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def fetch_runs(base_url: str) -> list[dict[str, Any]]:
+    # Saved runs change infrequently, so a short cache keeps the sidebar responsive.
+    try:
+        return get_json(f"{base_url}/runs")
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=15, show_spinner=False)
+def fetch_run(base_url: str, run_id: str) -> dict[str, Any]:
+    # Cache reopened runs briefly to avoid repeated backend fetches while users compare scenarios.
+    return get_json(f"{base_url}/runs/{run_id}")
+
+
+def fetch_job(base_url: str, job_id: str) -> dict[str, Any]:
+    return get_json(f"{base_url}/jobs/{job_id}")
+
+
+def post_optimize(base_url: str, station_file, network_file, form_data: dict[str, Any]) -> dict[str, Any]:
+    import uuid
+
+    boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
+    body = bytearray()
+    for key, value in form_data.items():
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode())
+        body.extend(f"{value}\r\n".encode())
+
+    uploads = [
+        ("station_file", station_file),
+        ("network_file", network_file),
+    ]
+    for field_name, uploaded in uploads:
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(
+            (
+                f'Content-Disposition: form-data; name="{field_name}"; '
+                f'filename="{uploaded.name}"\r\n'
+            ).encode()
+        )
+        body.extend(b"Content-Type: application/octet-stream\r\n\r\n")
+        body.extend(uploaded.getvalue())
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode())
+
+    request = Request(
+        f"{base_url}/optimize",
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=3600) as response:
+            return json_loads_bytes(response.read())
+    except HTTPError as exc:
+        detail = exc.reason
+        try:
+            payload = json_loads_bytes(exc.read())
+            if isinstance(payload, dict) and "detail" in payload:
+                detail = payload["detail"]
+        except Exception:
+            pass
+        raise RuntimeError(f"Backend optimization error: {detail}") from exc
+
+
+def wait_for_job(base_url: str, job_id: str) -> dict[str, Any]:
+    # Poll the backend and surface progress while optimization runs asynchronously.
+    progress_bar = st.progress(0, text="Job queued")
+    status_box = st.empty()
+    while True:
+        job = fetch_job(base_url, job_id)
+        message = job.get("message", "Working...")
+        progress = float(job.get("progress", 0.0))
+        progress_bar.progress(min(max(progress, 0.0), 1.0), text=message)
+        status_box.info(
+            f"Status: {job.get('status', 'unknown')} | "
+            f"Step: {job.get('stage', 'n/a')} | "
+            f"Progress: {progress * 100:.0f}%"
+        )
+        if job.get("status") == "completed":
+            progress_bar.progress(1.0, text="Optimization complete")
+            status_box.success("Optimization finished successfully.")
+            return job["result"]
+        if job.get("status") == "failed":
+            progress_bar.progress(1.0, text="Optimization failed")
+            raise RuntimeError(f"Backend optimization error: {job.get('error', 'Unknown error')}")
+        time.sleep(1.5)
+
+
+def build_solution_summary_rows(run_payload: dict[str, Any]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for name, payload in run_payload["solutions"].items():
+        metrics = payload["metrics"]
+        avg_lts = metrics.get("avg_lts")
+        if avg_lts is None:
+            avg_lts = float(metrics.get("stress", 0.0)) / max(1, int(metrics.get("selected_links", 0)))
+        rows.append(
+            {
+                "Solution": name,
+                "Demand Coverage": float(metrics["demand"]),
+                "Average LTS": float(avg_lts),
+                "Total Cost": float(metrics["cost"]),
+                "Stations": int(metrics["selected_stations"]),
+                "Links": int(metrics["selected_links"]),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def get_solution_display_metrics(solution: dict[str, Any]) -> dict[str, float]:
+    metrics = solution["metrics"]
+    avg_lts = metrics.get("avg_lts")
+    if avg_lts is None:
+        avg_lts = float(metrics.get("stress", 0.0)) / max(1, int(metrics.get("selected_links", 0)))
+    return {
+        "Demand Coverage": float(metrics["demand"]),
+        "Average LTS": float(avg_lts),
+        "Total Cost": float(metrics["cost"]),
+        "Stations": int(metrics["selected_stations"]),
+        "Links": int(metrics["selected_links"]),
+    }
+
+
+def format_percent_delta(current: float, baseline: float) -> str:
+    if abs(baseline) < 1e-9:
+        return "n/a"
+    return f"{((current - baseline) / baseline) * 100:+.1f}%"
+
+
+def build_decision_insight(adjusted_solution: dict[str, Any], baseline_name: str | None = None, baseline_metrics: dict[str, Any] | None = None) -> str:
+    metrics = adjusted_solution["metrics"]
+    insight = (
+        f"This plan activates {metrics['Stations']} stations and {metrics['Links']} upgraded links, "
+        f"balancing demand coverage, cost, and network stress in one representative scenario."
+    )
+    if baseline_name and baseline_metrics:
+        demand_delta = metrics["Demand Coverage"] - baseline_metrics["Demand Coverage"]
+        cost_delta = metrics["Total Cost"] - baseline_metrics["Total Cost"]
+        stress_delta = metrics["Average LTS"] - baseline_metrics["Average LTS"]
+        insight += (
+            f" Compared with {baseline_name}, demand changes by {demand_delta:,.0f} "
+            f"({format_percent_delta(metrics['Demand Coverage'], baseline_metrics['Demand Coverage'])}), "
+            f"cost changes by {cost_delta:,.0f} "
+            f"({format_percent_delta(metrics['Total Cost'], baseline_metrics['Total Cost'])}), "
+            f"and average LTS changes by {stress_delta:+.2f}."
+        )
+    return insight
+
+
+def classify_map_trace(trace: go.BaseTraceType) -> str:
+    name = str(getattr(trace, "name", "") or "").lower()
+    if "current stations" in name:
+        return "current_stations"
+    if "candidate options" in name:
+        return "candidate_stations"
+    if "selected stations" in name:
+        return "selected_stations"
+    if "routes with lts" in name:
+        return "links"
+    return "other"
+
+
+def build_map_figure(
+    solution: dict[str, Any],
+    compare_solution: dict[str, Any] | None,
+    show_stations: bool,
+    show_links: bool,
+    show_demand_overlay: bool,
+    max_lts_filter: int,
+    route_length_range_km: tuple[float, float],
+) -> go.Figure:
+    # Start from the backend-generated scenario map and apply lightweight UI-only filters here.
+    fig = go.Figure(solution["map_figure"])
+    min_length_km, max_length_km = route_length_range_km
+
+    for trace in fig.data:
+        trace_kind = classify_map_trace(trace)
+        if trace_kind in {"current_stations", "candidate_stations", "selected_stations"}:
+            trace.visible = show_stations
+        elif trace_kind == "links":
+            meta = getattr(trace, "meta", None)
+            if isinstance(meta, dict):
+                lts_level = int(meta.get("lts_level", 1))
+                distance_km = float(meta.get("distance_km", 0.0))
+            else:
+                trace_name = str(getattr(trace, "name", "") or "")
+                lts_level = int(trace_name.rsplit(" ", 1)[-1]) if trace_name.rsplit(" ", 1)[-1].isdigit() else 1
+                distance_km = 0.0
+            trace.visible = (
+                show_links and lts_level <= max_lts_filter and min_length_km <= distance_km <= max_length_km
+            )
+
+    selected_station_trace = next((trace for trace in fig.data if classify_map_trace(trace) == "selected_stations"), None)
+    demand_bubble_trace = None
+    if show_demand_overlay and selected_station_trace is not None:
+        customdata = getattr(selected_station_trace, "customdata", None)
+        if customdata is not None and len(customdata) == len(selected_station_trace.lat):
+            weights = [float(row[1]) if len(row) > 1 else 1.0 for row in customdata]
+            max_weight = max(weights) if weights else 1.0
+            bubble_sizes = [18 + (weight / max_weight) * 28 if max_weight > 0 else 18 for weight in weights]
+            demand_bubble_trace = go.Scattermapbox(
+                lat=list(selected_station_trace.lat),
+                lon=list(selected_station_trace.lon),
+                mode="markers",
+                marker=dict(
+                    size=bubble_sizes,
+                    color="rgba(67,184,163,0.22)",
+                    opacity=0.34,
+                ),
+                hoverinfo="skip",
+                showlegend=False,
+                name="Demand bubbles",
+            )
+
+    if compare_solution is not None:
+        compare_fig = go.Figure(compare_solution["map_figure"])
+        for trace in compare_fig.data:
+            trace_kind = classify_map_trace(trace)
+            if trace_kind == "selected_stations":
+                trace.name = "Comparison stations"
+                trace.marker = dict(size=11, color="#6d28d9", opacity=0.6)
+                trace.textfont = dict(color="#6d28d9")
+                trace.visible = show_stations
+                fig.add_trace(trace)
+            elif trace_kind == "links":
+                meta = getattr(trace, "meta", None)
+                if isinstance(meta, dict):
+                    lts_level = int(meta.get("lts_level", 1))
+                    distance_km = float(meta.get("distance_km", 0.0))
+                else:
+                    lts_level = 1
+                    distance_km = 0.0
+                trace.name = "Comparison links"
+                trace.line = dict(width=4, color="#6d28d9")
+                trace.opacity = 0.38
+                trace.visible = (
+                    show_links and lts_level <= max_lts_filter and min_length_km <= distance_km <= max_length_km
+                )
+                fig.add_trace(trace)
+
+    if demand_bubble_trace is not None:
+        fig.data = (demand_bubble_trace,) + tuple(fig.data)
+
+    fig.update_layout(
+        title=None,
+        height=720,
+        margin=dict(l=0, r=0, t=0, b=0),
+        mapbox=dict(style="carto-positron", zoom=11.8),
+        legend=dict(
+            orientation="h",
+            y=0.01,
+            x=0.01,
+            bgcolor="rgba(255,255,255,0.94)",
+            bordercolor="rgba(17,24,39,0.10)",
+            borderwidth=1,
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(
+            bgcolor="rgba(11,53,82,0.94)",
+            bordercolor="rgba(67,184,163,0.9)",
+            font=dict(color="#f8fbfd", size=13),
+        ),
+    )
+    return fig
+
+
+def render_kpis(adjusted_solution: dict[str, Any], compare_metrics: dict[str, Any] | None = None) -> None:
+    metrics = adjusted_solution["metrics"]
+    baseline = adjusted_solution.get("baseline")
+    baseline_label = adjusted_solution.get("baseline_label")
+    st.markdown("### Decision snapshot")
+    if baseline and baseline_label:
+        st.caption(f"Delta values are shown against {baseline_label}.")
+    else:
+        st.caption("This snapshot summarizes the currently selected scenario.")
+    metric_cols = st.columns(2)
+    metric_cols[0].metric(
+        "Demand coverage",
+        f"{metrics['Demand Coverage']:,.0f}",
+        format_percent_delta(metrics["Demand Coverage"], baseline["Demand Coverage"]) if baseline else None,
+    )
+    metric_cols[1].metric(
+        "Total cost",
+        format_cost(metrics["Total Cost"]),
+        format_percent_delta(metrics["Total Cost"], baseline["Total Cost"]) if baseline else None,
+    )
+    metric_cols = st.columns(2)
+    metric_cols[0].metric(
+        "Average LTS",
+        f"{metrics['Average LTS']:.2f}",
+        f"{metrics['Average LTS'] - baseline['Average LTS']:+.2f}" if baseline else None,
+    )
+    metric_cols[1].metric(
+        "Active assets",
+        f"{int(metrics['Stations'])} st / {int(metrics['Links'])} lk",
+        (
+            f"{int(metrics['Stations'] - baseline['Stations']):+d} / "
+            f"{int(metrics['Links'] - baseline['Links']):+d}"
+        ) if baseline else None,
+    )
+    if compare_metrics is not None:
+        st.caption(
+            f"Against the comparison scenario: demand {metrics['Demand Coverage'] - compare_metrics['Demand Coverage']:,.0f}, "
+            f"cost {metrics['Total Cost'] - compare_metrics['Total Cost']:,.0f}, "
+            f"LTS {metrics['Average LTS'] - compare_metrics['Average LTS']:+.2f}."
+        )
+
+
+def render_pareto(run_payload: dict[str, Any], selected_solution_name: str) -> str:
+    summary_df = build_solution_summary_rows(run_payload)
+    fig = go.Figure(
+        data=[
+            go.Scatter(
+                x=summary_df["Total Cost"],
+                y=summary_df["Demand Coverage"],
+                mode="markers+text",
+                text=summary_df["Solution"],
+                textposition="top center",
+                marker=dict(
+                    size=18,
+                    color=summary_df["Average LTS"],
+                    colorscale=[
+                        [0.0, "#2ca25f"],
+                        [0.35, "#f2c14e"],
+                        [0.7, "#f28e2b"],
+                        [1.0, "#d1495b"],
+                    ],
+                    showscale=True,
+                    colorbar=dict(title="Avg LTS"),
+                    line=dict(
+                        width=[3 if name == selected_solution_name else 1.4 for name in summary_df["Solution"]],
+                        color=["#0b3552" if name == selected_solution_name else "#ffffff" for name in summary_df["Solution"]],
+                    ),
+                ),
+                customdata=summary_df["Solution"],
+                hovertemplate=(
+                    "<b>%{customdata}</b><br>"
+                    "Cost: %{x:,.0f}<br>"
+                    "Demand: %{y:,.0f}<br>"
+                    "Average LTS: %{marker.color:.2f}<extra></extra>"
+                ),
+            )
+        ]
+    )
+    fig.update_layout(
+        title=None,
+        clickmode="event+select",
+        xaxis_title="Total cost",
+        yaxis_title="Demand coverage",
+        margin=dict(l=8, r=8, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,0.98)",
+        font=dict(color="#173042"),
+        xaxis=dict(
+            gridcolor="rgba(11,53,82,0.10)",
+            zerolinecolor="rgba(11,53,82,0.10)",
+        ),
+        yaxis=dict(
+            gridcolor="rgba(11,53,82,0.10)",
+            zerolinecolor="rgba(11,53,82,0.10)",
+        ),
+    )
+    selection = st.plotly_chart(
+        fig,
+        use_container_width=True,
+        key=f"pareto_summary_{run_payload['run_id']}",
+        on_select="rerun",
+    )
+    if selection and getattr(selection, "selection", None):
+        points = selection.selection.get("points", [])
+        if points:
+            point_index = int(points[0]["point_index"])
+            return str(summary_df.iloc[point_index]["Solution"])
+    return selected_solution_name
+
+
+def render_map(
+    run_payload: dict[str, Any],
+    selected_solution_name: str,
+    compare_solution_name: str | None,
+    show_stations: bool,
+    show_links: bool,
+    show_demand_overlay: bool,
+    max_lts_filter: int,
+    route_length_range_km: tuple[float, float],
+) -> None:
+    solution = run_payload["solutions"][selected_solution_name]
+    compare_solution = run_payload["solutions"].get(compare_solution_name) if compare_solution_name else None
+    map_fig = build_map_figure(
+        solution,
+        compare_solution,
+        show_stations=show_stations,
+        show_links=show_links,
+        show_demand_overlay=show_demand_overlay,
+        max_lts_filter=max_lts_filter,
+        route_length_range_km=route_length_range_km,
+    )
+    st.plotly_chart(
+        map_fig,
+        use_container_width=True,
+        key=f"decision_map_{run_payload['run_id']}_{selected_solution_name}_{compare_solution_name}",
+    )
+    st.caption("Hover the map to inspect station demand and docks, or route distance and previous LTS for each upgraded corridor.")
+
+
+def render_run(run_payload: dict[str, Any]) -> None:
+    solution_names = list(run_payload["solutions"].keys())
+    summary_df = build_solution_summary_rows(run_payload)
+
+    scenario_default = st.session_state.get(
+        f"selected_solution_name_{run_payload['run_id']}",
+        "Balanced" if "Balanced" in solution_names else solution_names[0],
+    )
+
+    # Keep the main decision flow compact: controls first, map second, evidence below.
+    open_panel("control-shell")
+    render_panel_header(
+        "Scenario controls",
+        "Choose a scenario and adjust the map filters before reviewing the decision map and trade-offs.",
+    )
+    top_controls = st.columns([1.2, 1.1, 0.9, 0.9])
+    with top_controls[0]:
+        selected_solution_name = st.selectbox(
+            "Select solution",
+            solution_names,
+            index=solution_names.index(scenario_default) if scenario_default in solution_names else 0,
+            key=f"solution_select_{run_payload['run_id']}",
+        )
+    with top_controls[1]:
+        compare_mode = st.checkbox("Enable comparison mode", key=f"compare_mode_{run_payload['run_id']}")
+    compare_solution_name = None
+    if compare_mode:
+        with top_controls[2]:
+            compare_options = [name for name in solution_names if name != selected_solution_name]
+            compare_solution_name = st.selectbox(
+                "Compare against",
+                compare_options,
+                index=0,
+                key=f"compare_solution_{run_payload['run_id']}",
+            )
+    with top_controls[3]:
+        max_lts_filter = st.slider(
+            "Max LTS",
+            min_value=1,
+            max_value=4,
+            value=4,
+            step=1,
+            key=f"max_lts_filter_{run_payload['run_id']}",
+        )
+
+    filter_row = st.columns([0.95, 0.95, 1.4, 1.3])
+    with filter_row[0]:
+        show_stations = st.checkbox("Show stations", value=True, key=f"show_stations_{run_payload['run_id']}")
+    with filter_row[1]:
+        show_links = st.checkbox("Show links", value=True, key=f"show_links_{run_payload['run_id']}")
+    with filter_row[2]:
+        show_demand_overlay = st.checkbox(
+            "Show demand bubbles",
+            value=True,
+            key=f"show_demand_overlay_{run_payload['run_id']}",
+            help="Displays a lightweight demand-size bubble around each selected station.",
+        )
+    selected_links_rows = run_payload["solutions"][selected_solution_name].get("selected_links", [])
+    max_lane_length_km = max(
+        [float(item.get("total_length", 0.0)) / 1000.0 for item in selected_links_rows],
+        default=0.0,
+    )
+    with filter_row[3]:
+        if max_lane_length_km > 0:
+            route_length_range_km = st.slider(
+                "Route length (km)",
+                min_value=0.0,
+                max_value=max_lane_length_km,
+                value=(0.0, max_lane_length_km),
+                step=max(0.1, max_lane_length_km / 20),
+                key=f"route_length_range_{run_payload['run_id']}",
+            )
+        else:
+            route_length_range_km = (0.0, 0.0)
+            st.caption("Route length filter becomes available once route geometry is present.")
+    close_panel()
+    selected_metrics = get_solution_display_metrics(run_payload["solutions"][selected_solution_name])
+    compare_metrics = None
+    baseline_metrics = None
+    baseline_label = None
+    if compare_solution_name:
+        compare_metrics = get_solution_display_metrics(run_payload["solutions"][compare_solution_name])
+        baseline_metrics = compare_metrics
+        baseline_label = compare_solution_name
+    elif "Balanced" in run_payload["solutions"] and selected_solution_name != "Balanced":
+        baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"])
+        baseline_label = "Balanced"
+
+    snapshot_payload = {
+        "metrics": selected_metrics,
+        "baseline": baseline_metrics,
+        "baseline_label": baseline_label,
+    }
+
+    st.session_state[f"selected_solution_name_{run_payload['run_id']}"] = selected_solution_name
+
+    main_cols = st.columns([1.9, 1], gap="large")
+    with main_cols[0]:
+        open_panel()
+        render_panel_header(
+            "Interactive decision map",
+            "Use the map as the main decision surface. Hover stations and corridor upgrades to inspect demand, docks, distance, and stress.",
+        )
+        render_map(
+            run_payload,
+            selected_solution_name,
+            compare_solution_name,
+            show_stations=show_stations,
+            show_links=show_links,
+            show_demand_overlay=show_demand_overlay,
+            max_lts_filter=max_lts_filter,
+            route_length_range_km=route_length_range_km,
+        )
+        close_panel()
+    with main_cols[1]:
+        open_panel("insight-shell")
+        render_kpis(snapshot_payload, compare_metrics=compare_metrics)
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        st.markdown("### Why this solution?")
+        st.info(build_decision_insight(snapshot_payload, baseline_label, baseline_metrics))
+        close_panel()
+
+    open_panel()
+    render_panel_header(
+        "Trade-off explorer",
+        "Click a point to switch the active scenario and see the map and decision snapshot update together.",
+    )
+    pareto_selected_solution_name = render_pareto(run_payload, selected_solution_name)
+    close_panel()
+    if pareto_selected_solution_name != selected_solution_name:
+        st.session_state[f"selected_solution_name_{run_payload['run_id']}"] = pareto_selected_solution_name
+        st.rerun()
+
+    bottom_cols = st.columns([1.3, 1], gap="large")
+    with bottom_cols[0]:
+        open_panel("comparison-shell")
+        render_panel_header(
+            "Scenario comparison",
+            "Compare the representative solutions on demand, stress, and cost efficiency.",
+        )
+        comparison_df = summary_df.copy()
+        comparison_df["Cost / Demand"] = comparison_df["Total Cost"] / comparison_df["Demand Coverage"].replace(0, np.nan)
+        st.dataframe(
+            comparison_df.style.format(
+                {
+                    "Demand Coverage": "{:,.0f}",
+                    "Average LTS": "{:.2f}",
+                    "Total Cost": "{:,.0f}",
+                    "Cost / Demand": "{:,.2f}",
+                }
+            ),
+            use_container_width=True,
+        )
+        close_panel()
+    with bottom_cols[1]:
+        open_panel("comparison-shell")
+        render_panel_header(
+            "Comparison mode",
+            "Inspect a second scenario alongside the active one when you need a direct side-by-side read.",
+        )
+        if compare_solution_name:
+            compare_rows = summary_df[summary_df["Solution"].isin([selected_solution_name, compare_solution_name])].copy()
+            st.dataframe(
+                compare_rows.style.format(
+                    {
+                        "Demand Coverage": "{:,.0f}",
+                        "Average LTS": "{:.2f}",
+                        "Total Cost": "{:,.0f}",
+                    }
+                ),
+                use_container_width=True,
+            )
+        else:
+            st.caption("Enable comparison mode to inspect another scenario alongside the selected plan.")
+        close_panel()
+
+    render_run_details(run_payload)
+
+    stations_csv = pd.DataFrame(run_payload["solutions"][selected_solution_name]["selected_stations"]).to_csv(index=False).encode("utf-8")
+    links_csv = pd.DataFrame(run_payload["solutions"][selected_solution_name]["selected_links"]).to_csv(index=False).encode("utf-8")
+    open_panel("action-shell")
+    render_panel_header(
+        "Export selected scenario",
+        "Download the current scenario assets for external review, analysis, or reporting.",
+    )
+    download_cols = st.columns(2)
+    download_cols[0].download_button(
+        "Download selected stations",
+        data=stations_csv,
+        file_name=f"{selected_solution_name.lower().replace(' ', '_')}_stations.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key=f"stations_download_{run_payload['run_id']}_{selected_solution_name}",
+    )
+    download_cols[1].download_button(
+        "Download selected links",
+        data=links_csv,
+        file_name=f"{selected_solution_name.lower().replace(' ', '_')}_links.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key=f"links_download_{run_payload['run_id']}_{selected_solution_name}",
+    )
+    close_panel()
+
+    report_key = f"report_markdown_{run_payload['run_id']}"
+    trigger_key = f"report_generated_{run_payload['run_id']}"
+    open_panel("action-shell")
+    render_panel_header(
+        "Decision report",
+        "Generate the narrative report only when you are ready to package the current run into a decision summary.",
+    )
+    if st.button(
+        "Generate Decision Report",
+        type="primary",
+        use_container_width=True,
+        key=f"generate_report_{run_payload['run_id']}",
+    ):
+        st.session_state[report_key] = generate_report_markdown(run_payload)
+        st.session_state[trigger_key] = True
+    if st.session_state.get(trigger_key):
+        report_markdown = st.session_state.get(report_key, "")
+        st.markdown('<div class="report-shell">', unsafe_allow_html=True)
+        st.markdown(report_markdown or "_Report generation did not produce any content._")
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.download_button(
+            "Download decision report",
+            data=report_markdown.encode("utf-8"),
+            file_name=f"decision_report_{run_payload['run_id']}.md",
+            mime="text/markdown",
+            use_container_width=True,
+            key=f"report_download_{run_payload['run_id']}",
+        )
+    close_panel()
+
+
+runs = fetch_runs(backend_url.rstrip("/"))
+selected_saved_run = None
+if runs:
+    render_sidebar_section_heading(
+        "6. Saved Runs",
+        "Jump back into previous scenarios.",
+        "Saved runs let you reopen past optimization results without rerunning the model. Use them to compare scenarios, revisit assumptions, or export a previously generated plan.",
+    )
+    labels = [f"{run['run_id']} | {run['created_at']}" for run in runs]
+    selected_label = st.sidebar.selectbox("Saved runs", ["None"] + labels)
+    if selected_label != "None":
+        selected_saved_run = selected_label.split(" | ")[0]
+    delete_cols = st.sidebar.columns(2)
+    if delete_cols[0].button("Delete selected", use_container_width=True):
+        if selected_saved_run is not None:
+            delete_run(selected_saved_run)
+            fetch_runs.clear()
+            fetch_run.clear()
+            st.session_state.pop(f"selected_solution_name_{selected_saved_run}", None)
+            st.rerun()
+    confirm_delete_all = st.sidebar.checkbox(
+        "Confirm delete all runs",
+        value=False,
+        help="Turn this on before removing the entire saved run history.",
+    )
+    if delete_cols[1].button("Delete all", use_container_width=True):
+        if not confirm_delete_all:
+            st.sidebar.warning("Enable confirmation first to delete every saved run.")
+        else:
+            delete_all_runs()
+            fetch_runs.clear()
+            fetch_run.clear()
+            st.session_state.pop("selected_saved_run", None)
+            st.rerun()
+
+if stations_upload is None or network_upload is None:
+    st.info(
+        "Upload a station file and a street network to begin."
+    )
+else:
+    render_station_preview(stations_upload)
+
+if run_button:
+    if stations_upload is None or network_upload is None:
+        st.error("Please upload both files first.")
+        st.stop()
+
+    with st.spinner("Running optimization and generating visualizations..."):
+        try:
+            job_response = post_optimize(
+                backend_url.rstrip("/"),
+                stations_upload,
+                network_upload,
+                {
+                    "candidate_points_per_station": candidate_points_per_station,
+                    "station_buffer_meters": float(station_buffer_meters),
+                    "area_of_interest_buffer_meters": float(area_of_interest_buffer_meters),
+                    "station_minimum": int(station_minimum),
+                    "link_minimum": int(link_minimum),
+                    "population_size": int(population_size),
+                    "generations": int(generations),
+                    "seed": int(seed),
+                    "dock_unit_cost": float(dock_unit_cost),
+                    "station_fixed_cost": float(station_fixed_cost),
+                    "link_cost_lts1_per_km": float(link_cost_lts1_per_km),
+                    "link_cost_lts2_per_km": float(link_cost_lts2_per_km),
+                    "link_cost_lts3_per_km": float(link_cost_lts3_per_km),
+                    "link_cost_lts4_per_km": float(link_cost_lts4_per_km),
+                },
+            )
+            run_payload = wait_for_job(backend_url.rstrip("/"), job_response["job_id"])
+        except Exception as exc:
+            st.exception(exc)
+            st.stop()
+
+    st.success("Optimization complete.")
+    render_run(run_payload)
+elif selected_saved_run:
+    try:
+        render_run(fetch_run(backend_url.rstrip("/"), selected_saved_run))
+    except Exception as exc:
+        st.exception(exc)
