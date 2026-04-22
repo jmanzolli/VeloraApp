@@ -744,12 +744,25 @@ def _path_to_latlon(graph: nx.Graph, from_node: Any, to_node: Any, crs: Any) -> 
     return [(lat, lon) for lon, lat in segment.coords]
 
 
+def _reduce_station_layer(layer_df: gpd.GeoDataFrame, limit: int) -> gpd.GeoDataFrame:
+    """Keep map payloads manageable by prioritizing the highest-demand points."""
+    if len(layer_df) <= limit:
+        return layer_df
+    sort_columns = ["Trips"] if "Trips" in layer_df.columns else None
+    if sort_columns:
+        return layer_df.sort_values(sort_columns, ascending=False).head(limit).copy()
+    return layer_df.head(limit).copy()
+
+
 def create_solution_map(
     solution: dict[str, Any],
     graph: nx.Graph,
     candidates_gdf: gpd.GeoDataFrame,
     links_df: pd.DataFrame,
 ) -> go.Figure:
+    MAX_CURRENT_STATIONS_ON_MAP = 450
+    MAX_CANDIDATE_STATIONS_ON_MAP = 650
+
     candidates_4326 = candidates_gdf.to_crs(4326).copy()
     center_series = candidates_4326
     center_lat = float(center_series.geometry.y.mean())
@@ -798,13 +811,13 @@ def create_solution_map(
     potential_mask = ~current_mask
 
     if current_mask.any():
-        current = candidate_rows_4326.loc[current_mask]
+        current = _reduce_station_layer(candidate_rows_4326.loc[current_mask], MAX_CURRENT_STATIONS_ON_MAP)
         fig.add_trace(
             go.Scattermapbox(
                 lat=current.geometry.y,
                 lon=current.geometry.x,
                 mode="markers",
-                marker=dict(size=8, color="#8a9aa9", opacity=0.55),
+                marker=dict(size=7, color="#8a9aa9", opacity=0.42),
                 customdata=np.stack(
                     [
                         current["Station_Name"],
@@ -820,18 +833,23 @@ def create_solution_map(
                     "Estimated docks: %{customdata[2]:,.0f}<extra></extra>"
                 ),
                 name="Current stations",
-                meta={"trace_type": "station_layer", "layer_name": "current"},
+                meta={
+                    "trace_type": "station_layer",
+                    "layer_name": "current",
+                    "rendered_points": int(len(current)),
+                    "sampled": bool(current_mask.sum() > len(current)),
+                },
             )
         )
 
     if potential_mask.any():
-        potential = candidate_rows_4326.loc[potential_mask]
+        potential = _reduce_station_layer(candidate_rows_4326.loc[potential_mask], MAX_CANDIDATE_STATIONS_ON_MAP)
         fig.add_trace(
             go.Scattermapbox(
                 lat=potential.geometry.y,
                 lon=potential.geometry.x,
                 mode="markers",
-                marker=dict(size=6, color="#2c7fb8", opacity=0.26),
+                marker=dict(size=5, color="#2c7fb8", opacity=0.18),
                 customdata=np.stack(
                     [
                         potential["Station_Name"],
@@ -847,7 +865,12 @@ def create_solution_map(
                     "Estimated docks: %{customdata[2]:,.0f}<extra></extra>"
                 ),
                 name="Candidate options",
-                meta={"trace_type": "station_layer", "layer_name": "candidate"},
+                meta={
+                    "trace_type": "station_layer",
+                    "layer_name": "candidate",
+                    "rendered_points": int(len(potential)),
+                    "sampled": bool(potential_mask.sum() > len(potential)),
+                },
             )
         )
 

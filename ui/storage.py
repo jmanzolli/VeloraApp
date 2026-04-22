@@ -27,6 +27,10 @@ def _run_dir(run_id: str) -> Path:
     return RUNS_DIR / run_id
 
 
+def _scenario_snapshots_path(run_id: str) -> Path:
+    return _run_dir(run_id) / "scenario_snapshots.json"
+
+
 def save_run_payload(run_id: str, payload: dict[str, Any]) -> None:
     ensure_storage()
     run_dir = _run_dir(run_id)
@@ -117,6 +121,34 @@ def load_run(run_id: str) -> dict[str, Any]:
         "pareto_rows": pareto_rows,
         "solutions": solutions,
     }
+
+
+def list_scenario_snapshots(run_id: str) -> list[dict[str, Any]]:
+    path = _scenario_snapshots_path(run_id)
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text())
+    return payload if isinstance(payload, list) else []
+
+
+def save_scenario_snapshot(run_id: str, snapshot: dict[str, Any]) -> None:
+    ensure_storage()
+    run_dir = _run_dir(run_id)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    snapshots = list_scenario_snapshots(run_id)
+    serialized_snapshot = json.loads(json.dumps(snapshot, cls=PlotlyJSONEncoder))
+    updated = [item for item in snapshots if item.get("snapshot_id") != serialized_snapshot.get("snapshot_id")]
+    updated.append(serialized_snapshot)
+    updated.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
+    _scenario_snapshots_path(run_id).write_text(json.dumps(updated, indent=2, cls=PlotlyJSONEncoder))
+
+
+def delete_scenario_snapshot(run_id: str, snapshot_id: str) -> None:
+    path = _scenario_snapshots_path(run_id)
+    if not path.exists():
+        return
+    snapshots = [item for item in list_scenario_snapshots(run_id) if item.get("snapshot_id") != snapshot_id]
+    path.write_text(json.dumps(snapshots, indent=2, cls=PlotlyJSONEncoder))
 
 
 def slugify(value: str) -> str:

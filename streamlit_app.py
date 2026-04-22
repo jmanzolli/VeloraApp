@@ -4,6 +4,8 @@ import base64
 import json
 import time
 import mimetypes
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -14,7 +16,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from ui.storage import delete_all_runs, delete_run
+from ui.storage import (
+    delete_all_runs,
+    delete_run,
+    delete_scenario_snapshot,
+    list_scenario_snapshots,
+    save_scenario_snapshot,
+)
 
 ASSETS_DIR = Path(__file__).parent / "ui" / "assets"
 
@@ -175,6 +183,34 @@ st.markdown(
         font-weight: 700 !important;
         box-shadow: 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(12,44,66,0.06) !important;
       }
+      .stButton button:hover,
+      .stDownloadButton button:hover {
+        background: linear-gradient(180deg, #ffffff, #e8f1f6) !important;
+        border-color: rgba(11,53,82,0.2) !important;
+      }
+      .stButton button:focus-visible,
+      .stDownloadButton button:focus-visible,
+      .stApp [data-baseweb="select"] > div:focus-within,
+      .stApp [data-baseweb="base-input"] > div:focus-within,
+      .stApp textarea:focus,
+      .stApp input:focus {
+        outline: none !important;
+        box-shadow: 0 0 0 3px rgba(67,184,163,0.22) !important;
+        border-color: rgba(67,184,163,0.88) !important;
+      }
+      .stButton button:disabled,
+      .stDownloadButton button:disabled {
+        background: linear-gradient(180deg, #eef3f6, #e6edf2) !important;
+        color: #7b8e9d !important;
+        border-color: rgba(11,53,82,0.08) !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+      }
+      .stButton button:disabled *,
+      .stDownloadButton button:disabled * {
+        color: #7b8e9d !important;
+        fill: #7b8e9d !important;
+      }
       .stButton button *,
       .stDownloadButton button * {
         color: #173042 !important;
@@ -211,8 +247,16 @@ st.markdown(
       .stButton button[kind="primary"]:hover,
       .stButton button[kind="primary"]:focus,
       .stButton button[kind="primary"]:active {
-        background: linear-gradient(90deg, var(--navy) 0%, #0d486f 100%) !important;
+        background: linear-gradient(90deg, #0c3c5d 0%, #12608f 100%) !important;
         color: white !important;
+      }
+      .stApp [data-baseweb="select"] > div,
+      .stApp [data-baseweb="base-input"] > div,
+      .stApp textarea,
+      .stApp input {
+        background: rgba(255,255,255,0.96) !important;
+        color: #173042 !important;
+        border-color: rgba(11,53,82,0.12) !important;
       }
       [data-baseweb="select"] > div,
       [data-baseweb="base-input"] > div,
@@ -578,15 +622,17 @@ st.markdown(
       .topbar-pill {
         padding: 0.45rem 0.8rem;
         border-radius: 999px;
-        border: 1px solid rgba(255,255,255,0.14);
-        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.18);
+        background: rgba(255,255,255,0.14);
+        color: rgba(248,252,254,0.96);
         font-size: 0.88rem;
+        font-weight: 600;
       }
       .topbar-pill:hover,
       .topbar-pill:focus,
       .topbar-pill:active {
-        background: rgba(255,255,255,0.07);
-        border-color: rgba(255,255,255,0.14);
+        background: rgba(255,255,255,0.18);
+        border-color: rgba(255,255,255,0.24);
       }
       .hero {
         padding: 1.15rem 1.35rem 1.25rem;
@@ -659,6 +705,54 @@ st.markdown(
       .comparison-shell,
       .action-shell {
         padding-bottom: 1rem;
+      }
+      .scenario-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.85rem;
+        margin-top: 0.95rem;
+      }
+      .scenario-card {
+        padding: 0.9rem 1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(11,53,82,0.08);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(242,248,251,0.98));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.88);
+      }
+      .scenario-card--accent {
+        background: linear-gradient(180deg, rgba(232,247,241,0.92), rgba(255,255,255,0.98));
+        border-color: rgba(67,184,163,0.26);
+      }
+      .scenario-card--comparison {
+        background: linear-gradient(180deg, rgba(242,238,252,0.96), rgba(255,255,255,0.98));
+        border-color: rgba(109,40,217,0.18);
+      }
+      .scenario-kicker {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .scenario-name {
+        display: block;
+        margin-top: 0.28rem;
+        color: var(--navy);
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+      .scenario-meta {
+        margin-top: 0.35rem;
+        color: #4e6372;
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+      .empty-state {
+        padding: 1rem 1.05rem;
+        border-radius: 16px;
+        border: 1px dashed rgba(11,53,82,0.18);
+        background: linear-gradient(180deg, rgba(245,249,252,0.96), rgba(255,255,255,0.98));
+        color: var(--muted);
       }
       .section-divider {
         height: 1px;
@@ -1387,6 +1481,28 @@ def build_solution_summary_rows(run_payload: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_scenario_summary_rows(scenario_entries: dict[str, dict[str, Any]]) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for scenario_id, entry in scenario_entries.items():
+        metrics = get_solution_display_metrics(entry["solution"])
+        rows.append(
+            {
+                "Scenario ID": scenario_id,
+                "Scenario": entry["label"],
+                "Type": entry["kind"],
+                "Source": entry["source_label"],
+                "Demand Coverage": metrics["Demand Coverage"],
+                "Average LTS": metrics["Average LTS"],
+                "Total Cost": metrics["Total Cost"],
+                "Stations": metrics["Stations"],
+                "Links": metrics["Links"],
+                "Notes": entry.get("notes", ""),
+                "Created": entry.get("created_at", ""),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def get_solution_display_metrics(solution: dict[str, Any]) -> dict[str, float]:
     metrics = solution["metrics"]
     avg_lts = metrics.get("avg_lts")
@@ -1398,6 +1514,67 @@ def get_solution_display_metrics(solution: dict[str, Any]) -> dict[str, float]:
         "Total Cost": float(metrics["cost"]),
         "Stations": int(metrics["selected_stations"]),
         "Links": int(metrics["selected_links"]),
+    }
+
+
+def build_scenario_catalog(
+    run_payload: dict[str, Any],
+    snapshots: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    catalog: dict[str, dict[str, Any]] = {}
+    for solution_name, solution in run_payload["solutions"].items():
+        scenario_id = f"core::{solution_name}"
+        catalog[scenario_id] = {
+            "id": scenario_id,
+            "label": solution_name,
+            "kind": "Optimizer scenario",
+            "source_label": solution_name,
+            "created_at": run_payload.get("created_at", ""),
+            "notes": "",
+            "solution": solution,
+        }
+    for snapshot in snapshots:
+        snapshot_id = str(snapshot.get("snapshot_id", "")).strip()
+        if not snapshot_id:
+            continue
+        scenario_id = f"snapshot::{snapshot_id}"
+        catalog[scenario_id] = {
+            "id": scenario_id,
+            "label": str(snapshot.get("label", "Untitled scenario")),
+            "kind": "Saved stakeholder scenario",
+            "source_label": str(snapshot.get("source_label", "Saved scenario")),
+            "created_at": str(snapshot.get("created_at", "")),
+            "notes": str(snapshot.get("notes", "")),
+            "solution": snapshot.get("solution", {}),
+            "snapshot_id": snapshot_id,
+        }
+    return catalog
+
+
+def build_difference_summary(candidate_entry: dict[str, Any], baseline_entry: dict[str, Any]) -> dict[str, Any]:
+    candidate_stations = pd.DataFrame(candidate_entry["solution"].get("selected_stations", []))
+    baseline_stations = pd.DataFrame(baseline_entry["solution"].get("selected_stations", []))
+    candidate_links = pd.DataFrame(candidate_entry["solution"].get("selected_links", []))
+    baseline_links = pd.DataFrame(baseline_entry["solution"].get("selected_links", []))
+
+    candidate_station_names = set(candidate_stations.get("station_name", candidate_stations.get("Station_Name", pd.Series(dtype=str))).astype(str))
+    baseline_station_names = set(baseline_stations.get("station_name", baseline_stations.get("Station_Name", pd.Series(dtype=str))).astype(str))
+
+    def link_keys(df: pd.DataFrame) -> set[tuple[str, str]]:
+        if df.empty:
+            return set()
+        from_series = df.get("from_station", df.get("from_node", pd.Series(dtype=str))).astype(str)
+        to_series = df.get("to_station", df.get("to_node", pd.Series(dtype=str))).astype(str)
+        return {tuple(sorted((from_name, to_name))) for from_name, to_name in zip(from_series, to_series)}
+
+    candidate_link_keys = link_keys(candidate_links)
+    baseline_link_keys = link_keys(baseline_links)
+
+    return {
+        "added_stations": sorted(candidate_station_names - baseline_station_names),
+        "removed_stations": sorted(baseline_station_names - candidate_station_names),
+        "added_links": sorted(candidate_link_keys - baseline_link_keys),
+        "removed_links": sorted(baseline_link_keys - candidate_link_keys),
     }
 
 
@@ -1477,7 +1654,7 @@ def build_map_figure(
         if customdata is not None and len(customdata) == len(selected_station_trace.lat):
             weights = [float(row[1]) if len(row) > 1 else 1.0 for row in customdata]
             max_weight = max(weights) if weights else 1.0
-            bubble_sizes = [18 + (weight / max_weight) * 28 if max_weight > 0 else 18 for weight in weights]
+            bubble_sizes = [14 + (weight / max_weight) * 22 if max_weight > 0 else 14 for weight in weights]
             demand_bubble_trace = go.Scattermapbox(
                 lat=list(selected_station_trace.lat),
                 lon=list(selected_station_trace.lon),
@@ -1523,7 +1700,7 @@ def build_map_figure(
 
     fig.update_layout(
         title=None,
-        height=720,
+        height=700,
         margin=dict(l=0, r=0, t=0, b=0),
         mapbox=dict(style="carto-positron", zoom=11.8),
         legend=dict(
@@ -1656,17 +1833,17 @@ def render_pareto(run_payload: dict[str, Any], selected_solution_name: str) -> s
 
 
 def render_map(
-    run_payload: dict[str, Any],
-    selected_solution_name: str,
-    compare_solution_name: str | None,
+    run_id: str,
+    selected_entry: dict[str, Any],
+    compare_entry: dict[str, Any] | None,
     show_stations: bool,
     show_links: bool,
     show_demand_overlay: bool,
     max_lts_filter: int,
     route_length_range_km: tuple[float, float],
 ) -> None:
-    solution = run_payload["solutions"][selected_solution_name]
-    compare_solution = run_payload["solutions"].get(compare_solution_name) if compare_solution_name else None
+    solution = selected_entry["solution"]
+    compare_solution = compare_entry["solution"] if compare_entry else None
     map_fig = build_map_figure(
         solution,
         compare_solution,
@@ -1679,45 +1856,60 @@ def render_map(
     st.plotly_chart(
         map_fig,
         use_container_width=True,
-        key=f"decision_map_{run_payload['run_id']}_{selected_solution_name}_{compare_solution_name}",
+        key=f"decision_map_{run_id}_{selected_entry['id']}_{compare_entry['id'] if compare_entry else 'none'}",
     )
     st.caption("Hover the map to inspect station demand and docks, or route distance and previous LTS for each upgraded corridor.")
+    station_layer_notes: list[str] = []
+    for trace in map_fig.data:
+        meta = getattr(trace, "meta", None)
+        if isinstance(meta, dict) and meta.get("trace_type") == "station_layer" and meta.get("sampled"):
+            layer_name = str(meta.get("layer_name", "stations")).replace("_", " ")
+            rendered_points = int(meta.get("rendered_points", 0))
+            station_layer_notes.append(f"{layer_name}: showing {rendered_points} highest-demand points")
+    if station_layer_notes:
+        st.caption("For performance, large background station layers are sampled on the map: " + " | ".join(station_layer_notes) + ".")
 
 
 def render_run(run_payload: dict[str, Any]) -> None:
-    solution_names = list(run_payload["solutions"].keys())
-    summary_df = build_solution_summary_rows(run_payload)
-
-    scenario_default = st.session_state.get(
-        f"selected_solution_name_{run_payload['run_id']}",
-        "Balanced" if "Balanced" in solution_names else solution_names[0],
+    run_id = run_payload["run_id"]
+    built_in_solution_names = list(run_payload["solutions"].keys())
+    snapshots = list_scenario_snapshots(run_id)
+    scenario_entries = build_scenario_catalog(run_payload, snapshots)
+    scenario_ids = list(scenario_entries.keys())
+    default_scenario_id = st.session_state.get(
+        f"selected_scenario_id_{run_id}",
+        f"core::{'Balanced' if 'Balanced' in built_in_solution_names else built_in_solution_names[0]}",
     )
+    if default_scenario_id not in scenario_entries:
+        default_scenario_id = scenario_ids[0]
 
-    # Keep the main decision flow compact: controls first, map second, evidence below.
+    # Scenario Studio starts with one active scenario and an optional comparison baseline.
     open_panel("control-shell")
     render_panel_header(
         "Scenario controls",
-        "Choose a scenario and adjust the map filters before reviewing the decision map and trade-offs.",
+        "Choose an optimizer scenario or a saved stakeholder scenario, then compare it against a baseline when needed.",
     )
-    top_controls = st.columns([1.2, 1.1, 0.9, 0.9])
+    top_controls = st.columns([1.5, 1.0, 1.0, 0.9])
     with top_controls[0]:
-        selected_solution_name = st.selectbox(
-            "Select solution",
-            solution_names,
-            index=solution_names.index(scenario_default) if scenario_default in solution_names else 0,
-            key=f"solution_select_{run_payload['run_id']}",
+        selected_scenario_id = st.selectbox(
+            "Active scenario",
+            scenario_ids,
+            index=scenario_ids.index(default_scenario_id),
+            format_func=lambda item: scenario_entries[item]["label"],
+            key=f"active_scenario_select_{run_id}",
         )
     with top_controls[1]:
-        compare_mode = st.checkbox("Enable comparison mode", key=f"compare_mode_{run_payload['run_id']}")
-    compare_solution_name = None
+        compare_mode = st.checkbox("Enable comparison", key=f"compare_mode_{run_id}")
+    compare_scenario_id = None
     if compare_mode:
         with top_controls[2]:
-            compare_options = [name for name in solution_names if name != selected_solution_name]
-            compare_solution_name = st.selectbox(
-                "Compare against",
+            compare_options = [scenario_id for scenario_id in scenario_ids if scenario_id != selected_scenario_id]
+            compare_scenario_id = st.selectbox(
+                "Baseline scenario",
                 compare_options,
                 index=0,
-                key=f"compare_solution_{run_payload['run_id']}",
+                format_func=lambda item: scenario_entries[item]["label"],
+                key=f"compare_scenario_select_{run_id}",
             )
     with top_controls[3]:
         max_lts_filter = st.slider(
@@ -1726,22 +1918,34 @@ def render_run(run_payload: dict[str, Any]) -> None:
             max_value=4,
             value=4,
             step=1,
-            key=f"max_lts_filter_{run_payload['run_id']}",
+            key=f"max_lts_filter_{run_id}",
         )
+
+    selected_entry = scenario_entries[selected_scenario_id]
+    compare_entry = scenario_entries.get(compare_scenario_id) if compare_scenario_id else None
+    compare_metrics = get_solution_display_metrics(compare_entry["solution"]) if compare_entry else None
+    baseline_metrics = None
+    baseline_label = None
+    if compare_entry:
+        baseline_metrics = compare_metrics
+        baseline_label = compare_entry["label"]
+    elif "Balanced" in run_payload["solutions"] and selected_entry["label"] != "Balanced":
+        baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"])
+        baseline_label = "Balanced"
 
     filter_row = st.columns([0.95, 0.95, 1.4, 1.3])
     with filter_row[0]:
-        show_stations = st.checkbox("Show stations", value=True, key=f"show_stations_{run_payload['run_id']}")
+        show_stations = st.checkbox("Show stations", value=True, key=f"show_stations_{run_id}")
     with filter_row[1]:
-        show_links = st.checkbox("Show links", value=True, key=f"show_links_{run_payload['run_id']}")
+        show_links = st.checkbox("Show links", value=True, key=f"show_links_{run_id}")
     with filter_row[2]:
         show_demand_overlay = st.checkbox(
             "Show demand bubbles",
             value=True,
-            key=f"show_demand_overlay_{run_payload['run_id']}",
+            key=f"show_demand_overlay_{run_id}",
             help="Displays a lightweight demand-size bubble around each selected station.",
         )
-    selected_links_rows = run_payload["solutions"][selected_solution_name].get("selected_links", [])
+    selected_links_rows = selected_entry["solution"].get("selected_links", [])
     max_lane_length_km = max(
         [float(item.get("total_length", 0.0)) / 1000.0 for item in selected_links_rows],
         default=0.0,
@@ -1754,31 +1958,115 @@ def render_run(run_payload: dict[str, Any]) -> None:
                 max_value=max_lane_length_km,
                 value=(0.0, max_lane_length_km),
                 step=max(0.1, max_lane_length_km / 20),
-                key=f"route_length_range_{run_payload['run_id']}",
+                key=f"route_length_range_{run_id}",
             )
         else:
             route_length_range_km = (0.0, 0.0)
             st.caption("Route length filter becomes available once route geometry is present.")
+    baseline_caption = compare_entry["label"] if compare_entry else (baseline_label or "No explicit baseline")
+    st.markdown(
+        f"""
+        <div class="scenario-strip">
+          <div class="scenario-card scenario-card--accent">
+            <span class="scenario-kicker">Active Scenario</span>
+            <span class="scenario-name">{selected_entry['label']}</span>
+            <div class="scenario-meta">{selected_entry['kind']} · Source: {selected_entry['source_label']}</div>
+          </div>
+          <div class="scenario-card scenario-card--comparison">
+            <span class="scenario-kicker">Baseline</span>
+            <span class="scenario-name">{baseline_caption}</span>
+            <div class="scenario-meta">Used for KPI deltas and comparison workspace summaries.</div>
+          </div>
+          <div class="scenario-card">
+            <span class="scenario-kicker">Map Filters</span>
+            <span class="scenario-name">LTS ≤ {max_lts_filter}</span>
+            <div class="scenario-meta">Route range: {route_length_range_km[0]:.1f} to {route_length_range_km[1]:.1f} km</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     close_panel()
-    selected_metrics = get_solution_display_metrics(run_payload["solutions"][selected_solution_name])
-    compare_metrics = None
-    baseline_metrics = None
-    baseline_label = None
-    if compare_solution_name:
-        compare_metrics = get_solution_display_metrics(run_payload["solutions"][compare_solution_name])
-        baseline_metrics = compare_metrics
-        baseline_label = compare_solution_name
-    elif "Balanced" in run_payload["solutions"] and selected_solution_name != "Balanced":
-        baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"])
-        baseline_label = "Balanced"
 
+    selected_metrics = get_solution_display_metrics(selected_entry["solution"])
     snapshot_payload = {
         "metrics": selected_metrics,
         "baseline": baseline_metrics,
         "baseline_label": baseline_label,
     }
 
-    st.session_state[f"selected_solution_name_{run_payload['run_id']}"] = selected_solution_name
+    st.session_state[f"selected_scenario_id_{run_id}"] = selected_scenario_id
+
+    open_panel("action-shell")
+    render_panel_header(
+        "Scenario studio",
+        "Save the active scenario with a stakeholder-friendly name and notes so it can be reused as a planning alternative.",
+    )
+    studio_cols = st.columns([1.2, 1.6])
+    with studio_cols[0]:
+        scenario_label = st.text_input(
+            "Scenario name",
+            value=st.session_state.get(f"scenario_label_{run_id}", selected_entry["label"]),
+            key=f"scenario_label_input_{run_id}",
+            help="Use a clear planning name like Safety First, East-West Focus, or Low Budget Alternative.",
+        )
+        scenario_notes = st.text_area(
+            "Scenario notes",
+            value=st.session_state.get(f"scenario_notes_{run_id}", ""),
+            key=f"scenario_notes_input_{run_id}",
+            height=120,
+            help="Capture why this scenario matters, what assumptions it reflects, or who requested it.",
+        )
+        if st.button("Save Active Scenario", type="primary", use_container_width=True, key=f"save_scenario_{run_id}"):
+            clean_label = scenario_label.strip()
+            if not clean_label:
+                st.warning("Provide a scenario name before saving.")
+            else:
+                save_scenario_snapshot(
+                    run_id,
+                    {
+                        "snapshot_id": uuid.uuid4().hex[:10],
+                        "label": clean_label,
+                        "notes": scenario_notes.strip(),
+                        "created_at": datetime.now().isoformat(timespec="seconds"),
+                        "source_label": selected_entry["label"],
+                        "solution": selected_entry["solution"],
+                    },
+                )
+                st.session_state[f"scenario_label_{run_id}"] = ""
+                st.session_state[f"scenario_notes_{run_id}"] = ""
+                st.rerun()
+    with studio_cols[1]:
+        saved_snapshot_rows = [
+            {
+                "Scenario": entry["label"],
+                "Source": entry["source_label"],
+                "Created": entry["created_at"],
+                "Notes": entry.get("notes", ""),
+            }
+            for entry in scenario_entries.values()
+            if entry["kind"] == "Saved stakeholder scenario"
+        ]
+        if saved_snapshot_rows:
+            st.dataframe(pd.DataFrame(saved_snapshot_rows), use_container_width=True, hide_index=True)
+            snapshot_options = [entry["id"] for entry in scenario_entries.values() if entry["kind"] == "Saved stakeholder scenario"]
+            snapshot_to_delete = st.selectbox(
+                "Delete saved scenario",
+                snapshot_options,
+                format_func=lambda item: scenario_entries[item]["label"],
+                key=f"snapshot_delete_select_{run_id}",
+            )
+            if st.button("Delete Saved Scenario", use_container_width=True, key=f"delete_snapshot_{run_id}"):
+                delete_scenario_snapshot(run_id, scenario_entries[snapshot_to_delete]["snapshot_id"])
+                if st.session_state.get(f"selected_scenario_id_{run_id}") == snapshot_to_delete:
+                    st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{built_in_solution_names[0]}"
+                st.rerun()
+        else:
+            st.markdown(
+                '<div class="empty-state">No stakeholder scenarios saved yet. Save one from the active scenario to build a reusable planning library.</div>',
+                unsafe_allow_html=True,
+            )
+    close_panel()
 
     main_cols = st.columns([1.9, 1], gap="large")
     with main_cols[0]:
@@ -1788,9 +2076,9 @@ def render_run(run_payload: dict[str, Any]) -> None:
             "Use the map as the main decision surface. Hover stations and corridor upgrades to inspect demand, docks, distance, and stress.",
         )
         render_map(
-            run_payload,
-            selected_solution_name,
-            compare_solution_name,
+            run_id,
+            selected_entry,
+            compare_entry,
             show_stations=show_stations,
             show_links=show_links,
             show_demand_overlay=show_demand_overlay,
@@ -1804,30 +2092,42 @@ def render_run(run_payload: dict[str, Any]) -> None:
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         st.markdown("### Why this solution?")
         st.info(build_decision_insight(snapshot_payload, baseline_label, baseline_metrics))
+        if selected_entry.get("notes"):
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+            st.markdown("### Scenario notes")
+            st.caption(selected_entry["notes"])
         close_panel()
 
     open_panel()
     render_panel_header(
         "Trade-off explorer",
-        "Click a point to switch the active scenario and see the map and decision snapshot update together.",
+        "Click a point to switch the active optimizer scenario. Saved stakeholder scenarios still remain available in Scenario Studio.",
     )
-    pareto_selected_solution_name = render_pareto(run_payload, selected_solution_name)
+    highlighted_solution_name = (
+        selected_entry["source_label"]
+        if selected_entry["kind"] == "Saved stakeholder scenario" and selected_entry["source_label"] in run_payload["solutions"]
+        else (selected_entry["label"] if selected_entry["label"] in run_payload["solutions"] else built_in_solution_names[0])
+    )
+    pareto_selected_solution_name = render_pareto(run_payload, highlighted_solution_name)
     close_panel()
-    if pareto_selected_solution_name != selected_solution_name:
-        st.session_state[f"selected_solution_name_{run_payload['run_id']}"] = pareto_selected_solution_name
+    if pareto_selected_solution_name != highlighted_solution_name:
+        st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{pareto_selected_solution_name}"
         st.rerun()
 
-    bottom_cols = st.columns([1.3, 1], gap="large")
+    scenario_summary_df = build_scenario_summary_rows(scenario_entries)
+    bottom_cols = st.columns([1.25, 1.05], gap="large")
     with bottom_cols[0]:
         open_panel("comparison-shell")
         render_panel_header(
-            "Scenario comparison",
-            "Compare the representative solutions on demand, stress, and cost efficiency.",
+            "Scenario library",
+            "Compare optimizer scenarios and saved stakeholder scenarios in one table.",
         )
-        comparison_df = summary_df.copy()
+        comparison_df = scenario_summary_df.copy()
         comparison_df["Cost / Demand"] = comparison_df["Total Cost"] / comparison_df["Demand Coverage"].replace(0, np.nan)
         st.dataframe(
-            comparison_df.style.format(
+            comparison_df[
+                ["Scenario", "Type", "Source", "Demand Coverage", "Average LTS", "Total Cost", "Stations", "Links", "Notes"]
+            ].style.format(
                 {
                     "Demand Coverage": "{:,.0f}",
                     "Average LTS": "{:.2f}",
@@ -1836,18 +2136,19 @@ def render_run(run_payload: dict[str, Any]) -> None:
                 }
             ),
             use_container_width=True,
+            hide_index=True,
         )
         close_panel()
     with bottom_cols[1]:
         open_panel("comparison-shell")
         render_panel_header(
-            "Comparison mode",
-            "Inspect a second scenario alongside the active one when you need a direct side-by-side read.",
+            "Comparison workspace",
+            "Use the active scenario as the candidate and compare it against the chosen baseline.",
         )
-        if compare_solution_name:
-            compare_rows = summary_df[summary_df["Solution"].isin([selected_solution_name, compare_solution_name])].copy()
+        if compare_entry:
+            compare_rows = scenario_summary_df[scenario_summary_df["Scenario ID"].isin([selected_scenario_id, compare_scenario_id])].copy()
             st.dataframe(
-                compare_rows.style.format(
+                compare_rows[["Scenario", "Demand Coverage", "Average LTS", "Total Cost", "Stations", "Links"]].style.format(
                     {
                         "Demand Coverage": "{:,.0f}",
                         "Average LTS": "{:.2f}",
@@ -1855,15 +2156,42 @@ def render_run(run_payload: dict[str, Any]) -> None:
                     }
                 ),
                 use_container_width=True,
+                hide_index=True,
             )
+            diff_summary = build_difference_summary(selected_entry, compare_entry)
+            st.markdown("### What changed")
+            diff_cols = st.columns(2)
+            diff_cols[0].metric("Added stations", len(diff_summary["added_stations"]))
+            diff_cols[1].metric("Removed stations", len(diff_summary["removed_stations"]))
+            diff_cols = st.columns(2)
+            diff_cols[0].metric("Added links", len(diff_summary["added_links"]))
+            diff_cols[1].metric("Removed links", len(diff_summary["removed_links"]))
+            if diff_summary["added_stations"]:
+                st.caption("Added stations: " + ", ".join(diff_summary["added_stations"][:6]))
+            if diff_summary["removed_stations"]:
+                st.caption("Removed stations: " + ", ".join(diff_summary["removed_stations"][:6]))
+            if diff_summary["added_links"]:
+                st.caption(
+                    "Added links: "
+                    + "; ".join([f"{edge[0]} - {edge[1]}" for edge in diff_summary["added_links"][:4]])
+                )
+            if diff_summary["removed_links"]:
+                st.caption(
+                    "Removed links: "
+                    + "; ".join([f"{edge[0]} - {edge[1]}" for edge in diff_summary["removed_links"][:4]])
+                )
         else:
-            st.caption("Enable comparison mode to inspect another scenario alongside the selected plan.")
+            st.markdown(
+                '<div class="empty-state">Enable comparison and choose a baseline scenario to activate the comparison workspace.</div>',
+                unsafe_allow_html=True,
+            )
         close_panel()
 
     render_run_details(run_payload)
 
-    stations_csv = pd.DataFrame(run_payload["solutions"][selected_solution_name]["selected_stations"]).to_csv(index=False).encode("utf-8")
-    links_csv = pd.DataFrame(run_payload["solutions"][selected_solution_name]["selected_links"]).to_csv(index=False).encode("utf-8")
+    selected_label_slug = selected_entry["label"].lower().replace(" ", "_")
+    stations_csv = pd.DataFrame(selected_entry["solution"].get("selected_stations", [])).to_csv(index=False).encode("utf-8")
+    links_csv = pd.DataFrame(selected_entry["solution"].get("selected_links", [])).to_csv(index=False).encode("utf-8")
     open_panel("action-shell")
     render_panel_header(
         "Export selected scenario",
@@ -1873,23 +2201,23 @@ def render_run(run_payload: dict[str, Any]) -> None:
     download_cols[0].download_button(
         "Download selected stations",
         data=stations_csv,
-        file_name=f"{selected_solution_name.lower().replace(' ', '_')}_stations.csv",
+        file_name=f"{selected_label_slug}_stations.csv",
         mime="text/csv",
         use_container_width=True,
-        key=f"stations_download_{run_payload['run_id']}_{selected_solution_name}",
+        key=f"stations_download_{run_id}_{selected_label_slug}",
     )
     download_cols[1].download_button(
         "Download selected links",
         data=links_csv,
-        file_name=f"{selected_solution_name.lower().replace(' ', '_')}_links.csv",
+        file_name=f"{selected_label_slug}_links.csv",
         mime="text/csv",
         use_container_width=True,
-        key=f"links_download_{run_payload['run_id']}_{selected_solution_name}",
+        key=f"links_download_{run_id}_{selected_label_slug}",
     )
     close_panel()
 
-    report_key = f"report_markdown_{run_payload['run_id']}"
-    trigger_key = f"report_generated_{run_payload['run_id']}"
+    report_key = f"report_markdown_{run_id}"
+    trigger_key = f"report_generated_{run_id}"
     open_panel("action-shell")
     render_panel_header(
         "Decision report",
@@ -1899,7 +2227,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
         "Generate Decision Report",
         type="primary",
         use_container_width=True,
-        key=f"generate_report_{run_payload['run_id']}",
+        key=f"generate_report_{run_id}",
     ):
         st.session_state[report_key] = generate_report_markdown(run_payload)
         st.session_state[trigger_key] = True
@@ -1911,10 +2239,10 @@ def render_run(run_payload: dict[str, Any]) -> None:
         st.download_button(
             "Download decision report",
             data=report_markdown.encode("utf-8"),
-            file_name=f"decision_report_{run_payload['run_id']}.md",
+            file_name=f"decision_report_{run_id}.md",
             mime="text/markdown",
             use_container_width=True,
-            key=f"report_download_{run_payload['run_id']}",
+            key=f"report_download_{run_id}",
         )
     close_panel()
 
@@ -1938,6 +2266,7 @@ if runs:
             fetch_runs.clear()
             fetch_run.clear()
             st.session_state.pop(f"selected_solution_name_{selected_saved_run}", None)
+            st.session_state.pop(f"selected_scenario_id_{selected_saved_run}", None)
             st.rerun()
     confirm_delete_all = st.sidebar.checkbox(
         "Confirm delete all runs",
