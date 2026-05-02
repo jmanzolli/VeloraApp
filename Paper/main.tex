@@ -436,7 +436,7 @@ Here, $\Delta p_{s,m}$ is avoided passenger-kilometres by replaced mode, $\Delta
 
 \subsection{Velora Platform Description}\label{subsec:velora_platform}
 
-Velora translates the data-processing, LTS, optimization, and KPI workflow into a decision-support environment for planners, analysts, and policy stakeholders. Consistent with decision-support-system applications in cycling planning \citep{silvestriCyclabilityDSS2024}, the platform links a Streamlit front-end with a persistent analytical back-end. Users upload station-demand and LTS network layers, configure planning assumptions and NSGA-II parameters, run or reopen scenarios, compare Pareto-efficient alternatives through maps and metrics, export selected station and link outputs, and automatically generate city-ready reports. Figure~\ref{fig:velora_platform_workflow} summarizes this platform workflow. In the main manuscript, Velora is treated as the implementation layer that makes the method repeatable and communicable; Appendix~\ref{app:velora_platform} provides additional details on platform functioning, modules, user experience, screenshots, and implementation notes.
+Velora translates the data-processing, LTS, optimization, and KPI workflow into a decision-support environment for planners, analysts, and policy stakeholders. Consistent with decision-support-system applications in cycling planning \citep{silvestriCyclabilityDSS2024}, the platform links a Streamlit front-end with a persistent analytical back-end. Users upload station-demand and LTS network layers, configure planning assumptions and NSGA-II parameters, run or reopen scenarios, compare Pareto-efficient alternatives through maps and metrics, export selected station and link outputs, and automatically generate city-ready reports. Velora is released as an open-source platform, with the application repository available at \url{https://github.com/jmanzolli/VeloraApp}. Figure~\ref{fig:velora_platform_workflow} summarizes this platform workflow. In the main manuscript, Velora is treated as the implementation layer that makes the method repeatable and communicable; Appendix~\ref{app:velora_platform} provides additional details on platform functioning, modules, user experience, screenshots, and implementation notes.
 
 \begin{figure}[htbp]
   \centering
@@ -835,9 +835,9 @@ In conclusion, the main contribution of this study is to demonstrate that explic
 \appendix
 \setcounter{figure}{0}
 \setcounter{table}{0}
-\renewcommand{\thefigure}{\thesection.\arabic{figure}}
-\renewcommand{\thetable}{\thesection.\arabic{table}}
-\renewcommand{\theequation}{\thesection.\arabic{equation}}
+\renewcommand{\thefigure}{\thesection\arabic{figure}}
+\renewcommand{\thetable}{\thesection\arabic{table}}
+\renewcommand{\theequation}{\thesection\arabic{equation}}
 
 \section{Velora Platform Supplementary Material}\label{app:velora_platform}
 
@@ -1077,7 +1077,7 @@ The authors declare that they have no known competing financial interests or per
 This work was supported by Environment and Climate Change Canada (ECCC), the New Frontiers in Research Fund (NFRF, Exploration Grant), and the Fonds de recherche du Québec (FRQ, AUDACE Grant). The funders had no role in the study design, data processing, analysis, interpretation of results, manuscript preparation, or decision to submit the article for publication.
 
 \section*{Data availability}
-The BIXI trip data used in this study are publicly available through BIXI Montreal open data at \url{https://bixi.com/en/open-data/}. The derived LTS network, optimization instances, and platform outputs contain processed geospatial layers and will be made available by the corresponding author upon reasonable request, subject to data-use and licensing constraints.
+The BIXI trip data used in this study are publicly available through BIXI Montreal open data at \url{https://bixi.com/en/open-data/}. Velora is available as an open-source application at \url{https://github.com/jmanzolli/VeloraApp}. The derived LTS network, optimization instances, and platform outputs contain processed geospatial layers and will be made available by the corresponding author upon reasonable request, subject to data-use and licensing constraints.
 
 \section*{Acknowledgments}
 The authors thank the data providers and municipal open-data programs that made the empirical cycling and geospatial inputs available for this study.

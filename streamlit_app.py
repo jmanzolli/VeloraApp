@@ -1151,11 +1151,9 @@ st.markdown(
       }
       .stApp {
         background:
-          linear-gradient(90deg, rgba(22,163,137,0.06) 1px, transparent 1px),
-          linear-gradient(180deg, rgba(16,47,67,0.055) 1px, transparent 1px),
-          radial-gradient(circle at 82% 4%, rgba(22,163,137,0.12), transparent 28%),
-          linear-gradient(180deg, #f7fafb 0%, #e9f0f4 100%);
-        background-size: 46px 46px, 46px 46px, auto, auto;
+          radial-gradient(circle at 88% 0%, rgba(22,163,137,0.09), transparent 24%),
+          linear-gradient(180deg, #f8fbfc 0%, #eef4f7 100%);
+        background-size: auto;
       }
       .block-container {
         max-width: 1540px;
@@ -1168,9 +1166,8 @@ st.markdown(
       }
       [data-testid="stSidebar"] {
         background:
-          linear-gradient(90deg, rgba(112,240,212,0.10) 1px, transparent 1px),
           linear-gradient(180deg, #071b29 0%, #0b2638 54%, #071a27 100%) !important;
-        background-size: 28px 28px, auto !important;
+        background-size: auto !important;
         border-right: 1px solid rgba(159,232,215,0.12);
       }
       [data-testid="stSidebar"] > div:first-child {
@@ -1214,10 +1211,14 @@ st.markdown(
       [data-testid="stSidebar"] .stButton button,
       [data-testid="stSidebar"] .stDownloadButton button {
         border-radius: 10px !important;
-        min-height: 2.55rem !important;
+        min-height: 2.35rem !important;
         background: rgba(255,255,255,0.08) !important;
         border-color: rgba(255,255,255,0.14) !important;
         box-shadow: none !important;
+        padding: 0.45rem 0.5rem !important;
+        font-size: 0.8rem !important;
+        line-height: 1.15 !important;
+        white-space: normal !important;
       }
       [data-testid="stSidebar"] .stButton button[kind="primary"] {
         background: linear-gradient(90deg, #145c7a 0%, #16a389 100%) !important;
@@ -1328,14 +1329,14 @@ st.markdown(
         box-shadow: none;
       }
       .dashboard-section {
-        background: rgba(255,255,255,0.76);
+        background: rgba(255,255,255,0.84);
         border-color: rgba(16,47,67,0.09);
         box-shadow: 0 16px 42px rgba(16,47,67,0.06);
         backdrop-filter: blur(10px);
       }
       .control-shell,
       .insight-shell {
-        background: rgba(255,255,255,0.74);
+        background: rgba(255,255,255,0.86);
       }
       .workspace-step {
         border-radius: 10px;
@@ -1402,6 +1403,48 @@ st.markdown(
       .stButton button[kind="primary"] {
         background: linear-gradient(90deg, #102f43 0%, #16a389 100%) !important;
         box-shadow: 0 14px 28px rgba(22,163,137,0.16) !important;
+      }
+      .stApp input[type="checkbox"] {
+        accent-color: #16a389 !important;
+      }
+      .stApp .stCheckbox [data-testid="stWidgetLabel"] p,
+      .stApp .stCheckbox label p {
+        color: #2d3a43 !important;
+        font-weight: 650 !important;
+      }
+      .stApp .stCheckbox svg {
+        color: #16a389 !important;
+        fill: #16a389 !important;
+      }
+      .stApp .stSlider div[role="slider"] {
+        background: #16a389 !important;
+        box-shadow: 0 0 0 4px rgba(22,163,137,0.13) !important;
+      }
+      .stApp .stSlider [data-baseweb="slider"] > div > div {
+        background: rgba(16,47,67,0.16) !important;
+      }
+      .stApp .stSlider [data-baseweb="slider"] div[style*="background"] {
+        background-color: #16a389 !important;
+      }
+      .stApp .stSlider [data-testid="stWidgetLabel"] p,
+      .stApp .stSlider label p {
+        color: #2d3a43 !important;
+        font-weight: 650 !important;
+      }
+      .stApp .stSlider [data-baseweb="input"] {
+        display: none !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-testid="stWidgetLabel"] p,
+      [data-testid="stSidebar"] .stSlider label p,
+      [data-testid="stSidebar"] .stCheckbox [data-testid="stWidgetLabel"] p,
+      [data-testid="stSidebar"] .stCheckbox label p {
+        color: #eef6fb !important;
+      }
+      [data-testid="stSidebar"] .stSlider div[role="slider"] {
+        background: #54d5bd !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div[style*="background"] {
+        background-color: #54d5bd !important;
       }
     </style>
     <div class="topbar">
@@ -2357,21 +2400,44 @@ def build_map_figure(
     demand_bubble_trace = None
     if show_demand_overlay and selected_station_trace is not None:
         customdata = getattr(selected_station_trace, "customdata", None)
-        if customdata is not None and len(customdata) == len(selected_station_trace.lat):
-            weights = [float(row[1]) if len(row) > 1 else 1.0 for row in customdata]
+        station_lat_values = getattr(selected_station_trace, "lat", None)
+        station_lon_values = getattr(selected_station_trace, "lon", None)
+        station_lats = list(station_lat_values) if station_lat_values is not None else []
+        station_lons = list(station_lon_values) if station_lon_values is not None else []
+        point_count = min(len(station_lats), len(station_lons))
+        station_lats = station_lats[:point_count]
+        station_lons = station_lons[:point_count]
+        custom_rows = list(customdata) if customdata is not None else []
+        if station_lats and station_lons:
+            weights = []
+            for index, _lat in enumerate(station_lats):
+                try:
+                    row = custom_rows[index]
+                    weights.append(float(row[1]) if len(row) > 1 else 1.0)
+                except (IndexError, TypeError, ValueError):
+                    weights.append(1.0)
             max_weight = max(weights) if weights else 1.0
-            bubble_sizes = [14 + (weight / max_weight) * 22 if max_weight > 0 else 14 for weight in weights]
+            min_weight = min(weights) if weights else 0.0
+            weight_span = max(max_weight - min_weight, 1.0)
+            bubble_sizes = [18 + ((weight - min_weight) / weight_span) * 34 for weight in weights]
             demand_bubble_trace = go.Scattermapbox(
-                lat=list(selected_station_trace.lat),
-                lon=list(selected_station_trace.lon),
+                lat=station_lats,
+                lon=station_lons,
                 mode="markers",
                 marker=dict(
                     size=bubble_sizes,
-                    color="rgba(67,184,163,0.22)",
-                    opacity=0.34,
+                    color="rgba(20, 163, 137, 0.28)",
+                    opacity=0.82,
                 ),
-                hoverinfo="skip",
-                showlegend=False,
+                customdata=custom_rows if len(custom_rows) == len(station_lats) else None,
+                hovertemplate=(
+                    "<b>Demand bubble</b><br>"
+                    "Station: %{customdata[0]}<br>"
+                    "Trips: %{customdata[1]:,.0f}<extra></extra>"
+                    if len(custom_rows) == len(station_lats)
+                    else "<b>Demand bubble</b><extra></extra>"
+                ),
+                showlegend=True,
                 name="Demand bubbles",
             )
 
@@ -2402,7 +2468,8 @@ def build_map_figure(
                 fig.add_trace(trace)
 
     if demand_bubble_trace is not None:
-        fig.data = (demand_bubble_trace,) + tuple(fig.data)
+        # Draw after the network traces so the checkbox produces an obvious visual change.
+        fig.add_trace(demand_bubble_trace)
 
     fig.update_layout(
         title=None,
@@ -2741,7 +2808,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
     with filter_row[3]:
         show_demand_overlay = st.checkbox(
             "Show demand bubbles",
-            value=not st.session_state.get(f"performance_mode_{run_id}", True),
+            value=True,
             key=f"show_demand_overlay_{run_id}",
             help="Displays a lightweight demand-size bubble around each selected station.",
         )
@@ -3038,7 +3105,7 @@ if runs:
     if selected_label != "None":
         selected_saved_run = selected_label.split(" | ")[0]
     delete_cols = st.sidebar.columns(2)
-    if delete_cols[0].button("Delete selected", use_container_width=True):
+    if delete_cols[0].button("Delete run", use_container_width=True):
         if selected_saved_run is not None:
             delete_run(selected_saved_run)
             fetch_runs.clear()
@@ -3051,7 +3118,7 @@ if runs:
         value=False,
         help="Turn this on before removing the entire saved run history.",
     )
-    if delete_cols[1].button("Delete all", use_container_width=True):
+    if delete_cols[1].button("Clear all", use_container_width=True):
         if not confirm_delete_all:
             st.sidebar.warning("Enable confirmation first to delete every saved run.")
         else:
