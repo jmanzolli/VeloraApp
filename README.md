@@ -18,6 +18,7 @@ Velora turns station and street-network files into a scenario-comparison workspa
 - Estimates mode shift and emissions reduction potential from configurable assumptions.
 - Saves runs and stakeholder scenarios for later review.
 - Exports selected stations, links, and decision reports.
+- Includes a pre-optimized demo scenario so visitors can explore the interface without uploading files.
 
 ## Screenshots
 
@@ -54,7 +55,7 @@ Optimization + persistence layer
 ├── ui/
 │   ├── optimizer.py              # Data validation, graph building, NSGA-II, maps
 │   ├── storage.py                # Saved run and scenario snapshot persistence
-│   └── assets/                   # Velora logo assets
+│   └── assets/                   # Velora logo assets and demo scenario payload
 ├── scripts/
 │   ├── bixi_case_study_graphs.py # Case-study figure generation
 │   └── notebooks/                # Python conversions of legacy notebooks
@@ -97,6 +98,8 @@ streamlit run streamlit_app.py --server.port 8501
 Open:
 
 - App: `http://127.0.0.1:8501`
+
+To preview the interface without uploading data, click **Load demo scenario** in the sidebar.
 
 ## Input Data Contract
 

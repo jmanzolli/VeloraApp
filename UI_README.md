@@ -16,6 +16,7 @@ The frontend is responsible for:
 - saved-run loading
 - scenario selection and comparison
 - decision map rendering
+- pre-optimized demo scenario loading
 - report generation
 - exports for selected stations and links
 

@@ -30,6 +30,8 @@ from ui.storage import (
 )
 
 ASSETS_DIR = Path(__file__).parent / "ui" / "assets"
+DEMO_RUN_PATH = ASSETS_DIR / "velora_demo_run.json"
+DEMO_RUN_ID = "__demo__"
 
 
 def load_asset_data_uri(path: Path) -> str:
@@ -1461,6 +1463,89 @@ st.markdown(
       [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div[style*="background"] {
         background-color: #54d5bd !important;
       }
+      @media (max-width: 760px) {
+        .block-container {
+          padding: 0.6rem 0.85rem 2rem !important;
+        }
+        [data-testid="stHeader"] {
+          height: 2.35rem;
+        }
+        [data-testid="stSidebar"] {
+          min-width: min(88vw, 22rem) !important;
+        }
+        .topbar {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.65rem;
+          padding: 0.9rem;
+          border-radius: 12px 12px 0 0;
+        }
+        .brand-lockup {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 0.35rem;
+          justify-items: start;
+        }
+        .brand-logo {
+          height: auto;
+          width: min(13.8rem, 76vw);
+          max-width: 100%;
+          padding: 0.34rem 0.55rem;
+        }
+        .topbar-title {
+          font-size: 1.15rem;
+          line-height: 1.1;
+        }
+        .topbar-nav {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          width: 100%;
+          gap: 0.45rem;
+        }
+        .topbar-pill {
+          width: 100%;
+          text-align: center;
+          padding: 0.42rem 0.35rem;
+          font-size: 0.72rem;
+        }
+        .hero {
+          padding: 1.2rem 1rem;
+        }
+        .hero h1 {
+          font-size: clamp(1.85rem, 9vw, 2.35rem);
+          line-height: 1.08;
+        }
+        .hero p {
+          font-size: 1rem;
+          line-height: 1.65;
+        }
+        .subhero {
+          grid-template-columns: 1fr !important;
+        }
+        .subhero-card {
+          padding: 1rem;
+        }
+        .map-mini-stats,
+        .planning-metric-grid,
+        .scenario-library-grid,
+        .comparison-delta-grid {
+          grid-template-columns: 1fr !important;
+        }
+        .stPlotlyChart {
+          overflow: hidden;
+        }
+        .stPlotlyChart > div {
+          min-height: 420px;
+        }
+        div[data-testid="column"] {
+          width: 100% !important;
+          flex: 1 1 100% !important;
+        }
+        div[data-testid="stHorizontalBlock"] {
+          flex-wrap: wrap;
+          gap: 0.75rem;
+        }
+      }
     </style>
     <div class="topbar">
       <div class="topbar-title">
@@ -1970,6 +2055,11 @@ def fetch_run(run_id: str) -> dict[str, Any]:
     return load_run(run_id)
 
 
+@st.cache_data(show_spinner=False)
+def load_demo_run() -> dict[str, Any]:
+    return json.loads(DEMO_RUN_PATH.read_text())
+
+
 def save_uploaded_temp_file(uploaded_file) -> str:
     suffix = Path(uploaded_file.name or "").suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
@@ -2055,13 +2145,15 @@ def build_run_payload(artifacts, config: UIConfig, run_id: str) -> dict[str, Any
 
 def run_local_optimization(station_file, network_file, form_data: dict[str, Any]) -> dict[str, Any]:
     # Streamlit Community Cloud runs a single app process, so optimization happens in-process.
+    population_size_value = max(4, int(form_data["population_size"]))
+    population_size_value -= population_size_value % 4
     config = UIConfig(
         candidate_points_per_station=int(form_data["candidate_points_per_station"]),
         station_buffer_meters=float(form_data["station_buffer_meters"]),
         area_of_interest_buffer_meters=float(form_data["area_of_interest_buffer_meters"]),
         station_minimum=int(form_data["station_minimum"]),
         link_minimum=int(form_data["link_minimum"]),
-        population_size=int(form_data["population_size"]),
+        population_size=population_size_value,
         generations=int(form_data["generations"]),
         seed=int(form_data["seed"]),
         dock_unit_cost=float(form_data["dock_unit_cost"]),
@@ -2423,7 +2515,6 @@ def build_map_figure(
     compare_solution: dict[str, Any] | None,
     show_stations: bool,
     show_links: bool,
-    show_demand_overlay: bool,
     performance_mode: bool,
     max_lts_filter: int,
     route_length_range_km: tuple[float, float],
@@ -2451,51 +2542,6 @@ def build_map_figure(
                 show_links and lts_level <= max_lts_filter and min_length_km <= distance_km <= max_length_km
             )
 
-    selected_station_trace = next((trace for trace in fig.data if classify_map_trace(trace) == "selected_stations"), None)
-    demand_bubble_trace = None
-    if show_demand_overlay and selected_station_trace is not None:
-        customdata = getattr(selected_station_trace, "customdata", None)
-        station_lat_values = getattr(selected_station_trace, "lat", None)
-        station_lon_values = getattr(selected_station_trace, "lon", None)
-        station_lats = list(station_lat_values) if station_lat_values is not None else []
-        station_lons = list(station_lon_values) if station_lon_values is not None else []
-        point_count = min(len(station_lats), len(station_lons))
-        station_lats = station_lats[:point_count]
-        station_lons = station_lons[:point_count]
-        custom_rows = list(customdata) if customdata is not None else []
-        if station_lats and station_lons:
-            weights = []
-            for index, _lat in enumerate(station_lats):
-                try:
-                    row = custom_rows[index]
-                    weights.append(float(row[1]) if len(row) > 1 else 1.0)
-                except (IndexError, TypeError, ValueError):
-                    weights.append(1.0)
-            max_weight = max(weights) if weights else 1.0
-            min_weight = min(weights) if weights else 0.0
-            weight_span = max(max_weight - min_weight, 1.0)
-            bubble_sizes = [18 + ((weight - min_weight) / weight_span) * 34 for weight in weights]
-            demand_bubble_trace = go.Scattermapbox(
-                lat=station_lats,
-                lon=station_lons,
-                mode="markers",
-                marker=dict(
-                    size=bubble_sizes,
-                    color="rgba(20, 163, 137, 0.28)",
-                    opacity=0.82,
-                ),
-                customdata=custom_rows if len(custom_rows) == len(station_lats) else None,
-                hovertemplate=(
-                    "<b>Demand bubble</b><br>"
-                    "Station: %{customdata[0]}<br>"
-                    "Trips: %{customdata[1]:,.0f}<extra></extra>"
-                    if len(custom_rows) == len(station_lats)
-                    else "<b>Demand bubble</b><extra></extra>"
-                ),
-                showlegend=True,
-                name="Demand bubbles",
-            )
-
     if compare_solution is not None:
         compare_fig = go.Figure(compare_solution["map_figure"])
         for trace in compare_fig.data:
@@ -2521,10 +2567,6 @@ def build_map_figure(
                     show_links and lts_level <= max_lts_filter and min_length_km <= distance_km <= max_length_km
                 )
                 fig.add_trace(trace)
-
-    if demand_bubble_trace is not None:
-        # Draw after the network traces so the checkbox produces an obvious visual change.
-        fig.add_trace(demand_bubble_trace)
 
     fig.update_layout(
         title=None,
@@ -2652,7 +2694,6 @@ def render_map(
     compare_entry: dict[str, Any] | None,
     show_stations: bool,
     show_links: bool,
-    show_demand_overlay: bool,
     performance_mode: bool,
     max_lts_filter: int,
     route_length_range_km: tuple[float, float],
@@ -2676,7 +2717,6 @@ def render_map(
         compare_solution,
         show_stations=show_stations,
         show_links=show_links,
-        show_demand_overlay=show_demand_overlay,
         performance_mode=performance_mode,
         max_lts_filter=max_lts_filter,
         route_length_range_km=route_length_range_km,
@@ -2848,7 +2888,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
         baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"], run_config)
         baseline_label = "Balanced"
 
-    filter_row = st.columns([0.9, 0.9, 1.1, 1.1, 1.35])
+    filter_row = st.columns([0.9, 0.9, 1.1, 1.35])
     with filter_row[0]:
         show_stations = st.checkbox("Show stations", value=True, key=f"show_stations_{run_id}")
     with filter_row[1]:
@@ -2860,19 +2900,12 @@ def render_run(run_payload: dict[str, Any]) -> None:
             key=f"performance_mode_{run_id}",
             help="Keeps the map focused on selected assets and hides large context layers.",
         )
-    with filter_row[3]:
-        show_demand_overlay = st.checkbox(
-            "Show demand bubbles",
-            value=True,
-            key=f"show_demand_overlay_{run_id}",
-            help="Displays a lightweight demand-size bubble around each selected station.",
-        )
     selected_links_rows = selected_entry["solution"].get("selected_links", [])
     max_lane_length_km = max(
         [float(item.get("total_length", 0.0)) / 1000.0 for item in selected_links_rows],
         default=0.0,
     )
-    with filter_row[4]:
+    with filter_row[3]:
         if max_lane_length_km > 0:
             route_length_range_km = st.slider(
                 "Route length (km)",
@@ -2942,7 +2975,6 @@ def render_run(run_payload: dict[str, Any]) -> None:
             compare_entry,
             show_stations=show_stations,
             show_links=show_links,
-            show_demand_overlay=show_demand_overlay,
             performance_mode=performance_mode,
             max_lts_filter=max_lts_filter,
             route_length_range_km=route_length_range_km,
@@ -3147,24 +3179,48 @@ def render_run(run_payload: dict[str, Any]) -> None:
     close_panel()
 
 
+render_sidebar_section_heading(
+    "7. Demo Scenario",
+    "Open the platform instantly.",
+    "Use a pre-optimized sample scenario to explore the interface without uploading data or waiting for the optimizer.",
+)
+if st.sidebar.button("Load demo scenario", use_container_width=True):
+    st.session_state["active_run_id"] = DEMO_RUN_ID
+    st.rerun()
+
 runs = fetch_runs()
-selected_saved_run = None
+selected_saved_run = st.session_state.get("active_run_id")
 if runs:
     render_sidebar_section_heading(
-        "7. Saved Runs",
+        "8. Saved Runs",
         "Jump back into previous scenarios.",
         "Saved runs let you reopen past optimization results without rerunning the model. Use them to compare scenarios, revisit assumptions, or export a previously generated plan.",
     )
     labels = [f"{run['run_id']} | {run['created_at']}" for run in runs]
-    selected_label = st.sidebar.selectbox("Saved runs", ["None"] + labels)
-    if selected_label != "None":
+    saved_options = ["None", "Demo scenario"] + labels
+    active_run_id = st.session_state.get("active_run_id")
+    active_option = "Demo scenario" if active_run_id == DEMO_RUN_ID else "None"
+    if active_run_id and active_run_id != DEMO_RUN_ID:
+        active_option = next((label for label in labels if label.startswith(f"{active_run_id} |")), "None")
+    selected_label = st.sidebar.selectbox(
+        "Saved runs",
+        saved_options,
+        index=saved_options.index(active_option) if active_option in saved_options else 0,
+    )
+    if selected_label == "Demo scenario":
+        selected_saved_run = DEMO_RUN_ID
+    elif selected_label != "None":
         selected_saved_run = selected_label.split(" | ")[0]
+    else:
+        selected_saved_run = None
+    st.session_state["active_run_id"] = selected_saved_run
     delete_cols = st.sidebar.columns(2)
     if delete_cols[0].button("Delete run", use_container_width=True):
-        if selected_saved_run is not None:
+        if selected_saved_run is not None and selected_saved_run != DEMO_RUN_ID:
             delete_run(selected_saved_run)
             fetch_runs.clear()
             fetch_run.clear()
+            st.session_state.pop("active_run_id", None)
             st.session_state.pop(f"selected_solution_name_{selected_saved_run}", None)
             st.session_state.pop(f"selected_scenario_id_{selected_saved_run}", None)
             st.rerun()
@@ -3180,7 +3236,7 @@ if runs:
             delete_all_runs()
             fetch_runs.clear()
             fetch_run.clear()
-            st.session_state.pop("selected_saved_run", None)
+            st.session_state.pop("active_run_id", None)
             st.rerun()
 
 if stations_upload is None or network_upload is None:
@@ -3224,10 +3280,14 @@ if run_button:
             st.exception(exc)
             st.stop()
 
+    st.session_state["active_run_id"] = run_payload["run_id"]
+    fetch_runs.clear()
+    fetch_run.clear()
     st.success("Optimization complete.")
     render_run(run_payload)
 elif selected_saved_run:
     try:
-        render_run(fetch_run(selected_saved_run))
+        run_payload = load_demo_run() if selected_saved_run == DEMO_RUN_ID else fetch_run(selected_saved_run)
+        render_run(run_payload)
     except Exception as exc:
         st.exception(exc)
