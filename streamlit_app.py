@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import time
 import mimetypes
@@ -36,6 +37,10 @@ def load_asset_data_uri(path: Path) -> str:
 LOGO_PATH = ASSETS_DIR / "velora_logo.svg"
 PAGE_ICON_PATH = ASSETS_DIR / "velora_logo.png"
 LOGO_URI = load_asset_data_uri(LOGO_PATH)
+
+DEFAULT_MODE_SHIFT_RATE = 0.15
+DEFAULT_AVERAGE_TRIP_DISTANCE_KM = 2.5
+DEFAULT_CAR_EMISSION_FACTOR_G_PER_KM = 190.0
 
 st.set_page_config(
     page_title="Velora",
@@ -218,20 +223,36 @@ st.markdown(
       }
       [data-testid="stSidebar"] .stButton button,
       [data-testid="stSidebar"] .stDownloadButton button {
-        background: rgba(255,255,255,0.96) !important;
-        color: var(--navy) !important;
-        border: 1px solid rgba(11,53,82,0.14) !important;
-        min-height: 3rem !important;
+        background: rgba(255,255,255,0.10) !important;
+        color: #f5fbff !important;
+        border: 1px solid rgba(255,255,255,0.16) !important;
+        min-height: 2.7rem !important;
+        border-radius: 13px !important;
         font-weight: 700 !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 22px rgba(2,14,24,0.10) !important;
+      }
+      [data-testid="stSidebar"] .stButton button *,
+      [data-testid="stSidebar"] .stDownloadButton button * {
+        color: #f5fbff !important;
+        fill: #f5fbff !important;
       }
       [data-testid="stSidebar"] .stButton button:hover,
       [data-testid="stSidebar"] .stButton button:focus,
       [data-testid="stSidebar"] .stDownloadButton button:hover,
       [data-testid="stSidebar"] .stDownloadButton button:focus {
-        background: #ffffff !important;
-        color: var(--navy) !important;
+        background: rgba(255,255,255,0.16) !important;
+        color: #ffffff !important;
         border-color: rgba(67,184,163,0.75) !important;
         box-shadow: 0 0 0 1px rgba(67,184,163,0.25) !important;
+      }
+      [data-testid="stSidebar"] .stButton button[kind="primary"] {
+        background: linear-gradient(90deg, #134b73 0%, #16736a 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(255,255,255,0.13) !important;
+      }
+      [data-testid="stSidebar"] .stButton button[kind="primary"] * {
+        color: #ffffff !important;
+        fill: #ffffff !important;
       }
       .stButton button[kind="primary"] {
         background: linear-gradient(90deg, var(--navy) 0%, #0d486f 100%) !important;
@@ -285,6 +306,17 @@ st.markdown(
       }
       [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] * {
         color: #173042 !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button {
+        background: #ffffff !important;
+        color: #173042 !important;
+        border: 1px solid rgba(11,53,82,0.14) !important;
+        min-height: 2.25rem !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] button * {
+        color: #173042 !important;
+        fill: #173042 !important;
       }
       [data-testid="stSidebar"] [data-testid="stFileUploaderFile"] {
         display: none !important;
@@ -706,9 +738,37 @@ st.markdown(
       .action-shell {
         padding-bottom: 1rem;
       }
+      .workspace-rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0 0 0.95rem;
+      }
+      .workspace-step {
+        padding: 0.78rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid rgba(11,53,82,0.09);
+        background: rgba(255,255,255,0.82);
+      }
+      .workspace-step strong {
+        display: block;
+        color: var(--navy);
+        font-size: 0.92rem;
+      }
+      .workspace-step span {
+        display: block;
+        margin-top: 0.2rem;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+      .workspace-step--active {
+        background: linear-gradient(180deg, rgba(232,247,241,0.98), rgba(255,255,255,0.98));
+        border-color: rgba(67,184,163,0.34);
+      }
       .scenario-strip {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.85rem;
         margin-top: 0.95rem;
       }
@@ -746,6 +806,141 @@ st.markdown(
         color: #4e6372;
         font-size: 0.84rem;
         line-height: 1.45;
+      }
+      .planning-metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0.75rem 0 0.95rem;
+      }
+      .planning-metric {
+        padding: 0.85rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid rgba(11,53,82,0.09);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(246,250,252,0.98));
+        min-height: 6.2rem;
+      }
+      .planning-metric--wide {
+        grid-column: 1 / -1;
+      }
+      .planning-metric-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .planning-metric-value {
+        display: block;
+        margin-top: 0.34rem;
+        color: var(--navy);
+        font-size: 1.55rem;
+        line-height: 1.05;
+        font-weight: 800;
+      }
+      .planning-metric-note {
+        display: block;
+        margin-top: 0.38rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+      .delta-pill {
+        display: inline-flex;
+        align-items: center;
+        margin-top: 0.45rem;
+        padding: 0.18rem 0.48rem;
+        border-radius: 999px;
+        font-size: 0.76rem;
+        font-weight: 800;
+      }
+      .delta-pill--positive {
+        background: rgba(44,162,95,0.12);
+        color: #0f6d42;
+      }
+      .delta-pill--negative {
+        background: rgba(209,73,91,0.12);
+        color: #a43849;
+      }
+      .delta-pill--neutral {
+        background: rgba(106,124,137,0.12);
+        color: #4e6372;
+      }
+      .asset-summary {
+        padding: 0.75rem 0.85rem;
+        border-radius: 14px;
+        background: rgba(11,53,82,0.05);
+        color: #4e6372;
+        font-size: 0.86rem;
+        line-height: 1.45;
+      }
+      .scenario-library-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-top: 0.35rem;
+      }
+      .library-card {
+        padding: 0.9rem;
+        border-radius: 16px;
+        border: 1px solid rgba(11,53,82,0.09);
+        background: linear-gradient(180deg, rgba(255,255,255,0.99), rgba(246,250,252,0.98));
+      }
+      .library-card--active {
+        border-color: rgba(67,184,163,0.5);
+        box-shadow: inset 0 0 0 1px rgba(67,184,163,0.14);
+      }
+      .library-card-title {
+        display: block;
+        color: var(--navy);
+        font-size: 1rem;
+        font-weight: 800;
+      }
+      .library-card-meta,
+      .library-card-note {
+        display: block;
+        margin-top: 0.28rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+      .library-card-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.45rem;
+        margin-top: 0.7rem;
+      }
+      .library-card-metrics span {
+        display: block;
+        padding: 0.42rem 0.5rem;
+        border-radius: 10px;
+        background: rgba(11,53,82,0.045);
+        color: #173042;
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+      .comparison-delta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.7rem;
+        margin: 0.75rem 0 0.95rem;
+      }
+      .comparison-delta-card {
+        padding: 0.8rem;
+        border-radius: 14px;
+        border: 1px solid rgba(11,53,82,0.08);
+        background: rgba(255,255,255,0.86);
+      }
+      .comparison-delta-card strong {
+        display: block;
+        color: var(--navy);
+        font-size: 0.9rem;
+      }
+      .comparison-delta-card span {
+        display: block;
+        margin-top: 0.22rem;
+        color: var(--muted);
+        font-size: 0.8rem;
       }
       .empty-state {
         padding: 1rem 1.05rem;
@@ -915,13 +1110,16 @@ st.markdown(
         color: var(--navy) !important;
       }
       @media (max-width: 1200px) {
-        .kpi-grid, .subhero, .map-mini-stats {
+        .kpi-grid, .subhero, .map-mini-stats, .scenario-strip, .workspace-rail, .scenario-library-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
       @media (max-width: 820px) {
-        .kpi-grid, .subhero, .map-mini-stats {
+        .kpi-grid, .subhero, .map-mini-stats, .scenario-strip, .workspace-rail, .planning-metric-grid, .scenario-library-grid, .comparison-delta-grid {
           grid-template-columns: 1fr;
+        }
+        .planning-metric--wide {
+          grid-column: auto;
         }
         .brand-logo {
           height: 2.4rem;
@@ -929,6 +1127,281 @@ st.markdown(
         .sidebar-stat-row {
           grid-template-columns: 1fr;
         }
+      }
+
+      /* Velora Planning Workspace visual refresh: cleaner, sharper, and more technical. */
+      :root {
+        --navy: #102f43;
+        --navy-deep: #071b29;
+        --teal: #16a389;
+        --teal-soft: #e6f7f2;
+        --amber: #c98d22;
+        --red: #c24152;
+        --panel: rgba(255,255,255,0.88);
+        --panel-strong: rgba(255,255,255,0.96);
+        --panel-border: rgba(16,47,67,0.10);
+        --ink: #101820;
+        --muted: #657685;
+        --surface: #edf3f6;
+        --surface-strong: #ffffff;
+        --shadow-soft: 0 18px 46px rgba(16,47,67,0.08);
+      }
+      html, body, .stApp {
+        font-family: "Aptos", "SF Pro Display", "Segoe UI", sans-serif;
+      }
+      .stApp {
+        background:
+          linear-gradient(90deg, rgba(22,163,137,0.06) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(16,47,67,0.055) 1px, transparent 1px),
+          radial-gradient(circle at 82% 4%, rgba(22,163,137,0.12), transparent 28%),
+          linear-gradient(180deg, #f7fafb 0%, #e9f0f4 100%);
+        background-size: 46px 46px, 46px 46px, auto, auto;
+      }
+      .block-container {
+        max-width: 1540px;
+        padding-top: 3.25rem;
+      }
+      [data-testid="stHeader"] {
+        background: rgba(255,255,255,0.82);
+        border-bottom: 1px solid rgba(16,47,67,0.08);
+        backdrop-filter: blur(14px);
+      }
+      [data-testid="stSidebar"] {
+        background:
+          linear-gradient(90deg, rgba(112,240,212,0.10) 1px, transparent 1px),
+          linear-gradient(180deg, #071b29 0%, #0b2638 54%, #071a27 100%) !important;
+        background-size: 28px 28px, auto !important;
+        border-right: 1px solid rgba(159,232,215,0.12);
+      }
+      [data-testid="stSidebar"] > div:first-child {
+        background: transparent !important;
+      }
+      [data-testid="stSidebar"] .block-container {
+        padding-top: 1.05rem;
+        padding-left: 1.05rem;
+        padding-right: 1.05rem;
+      }
+      [data-testid="stSidebar"] .stExpander {
+        background: rgba(255,255,255,0.055);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 12px;
+        box-shadow: none;
+        backdrop-filter: blur(18px);
+      }
+      [data-testid="stSidebar"] .stExpander summary {
+        border-radius: 10px !important;
+        background: rgba(255,255,255,0.075) !important;
+        padding: 0.15rem 0.2rem !important;
+      }
+      [data-testid="stSidebar"] .stExpander summary p,
+      [data-testid="stSidebar"] .stExpander summary span {
+        font-size: 0.9rem;
+        font-weight: 750;
+      }
+      [data-testid="stSidebar"] .stSlider div[role="slider"] {
+        background: #54d5bd !important;
+        box-shadow: 0 0 0 3px rgba(84,213,189,0.18) !important;
+      }
+      [data-testid="stSidebar"] .stSlider [data-baseweb="slider"] > div > div {
+        background: rgba(255,255,255,0.20) !important;
+      }
+      [data-testid="stSidebar"] .stNumberInput input,
+      [data-testid="stSidebar"] .stTextInput input,
+      [data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"],
+      [data-testid="stSidebar"] .stFileUploader {
+        border-radius: 10px !important;
+      }
+      [data-testid="stSidebar"] .stButton button,
+      [data-testid="stSidebar"] .stDownloadButton button {
+        border-radius: 10px !important;
+        min-height: 2.55rem !important;
+        background: rgba(255,255,255,0.08) !important;
+        border-color: rgba(255,255,255,0.14) !important;
+        box-shadow: none !important;
+      }
+      [data-testid="stSidebar"] .stButton button[kind="primary"] {
+        background: linear-gradient(90deg, #145c7a 0%, #16a389 100%) !important;
+        box-shadow: 0 12px 26px rgba(22,163,137,0.18) !important;
+      }
+      .sidebar-brand-card {
+        border-radius: 16px;
+        padding: 1rem;
+        background:
+          linear-gradient(145deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04)),
+          linear-gradient(180deg, rgba(22,163,137,0.10), rgba(16,47,67,0));
+        border-color: rgba(255,255,255,0.12);
+        box-shadow: none;
+      }
+      .sidebar-brand-logo {
+        border-radius: 12px;
+        width: 3rem;
+        height: 3rem;
+      }
+      .sidebar-wordmark {
+        font-size: 1.2rem;
+        letter-spacing: 0;
+      }
+      .sidebar-tagline,
+      .sidebar-note {
+        font-size: 0.82rem;
+      }
+      .sidebar-stat {
+        border-radius: 10px;
+        background: rgba(255,255,255,0.065);
+      }
+      .sidebar-section-head {
+        margin-top: 0.95rem;
+      }
+      .sidebar-section-title {
+        font-size: 0.92rem;
+      }
+      .sidebar-section-meta {
+        font-size: 0.74rem;
+      }
+      .sidebar-help-badge {
+        width: 1.35rem;
+        height: 1.35rem;
+        font-size: 0.8rem;
+        background: rgba(84,213,189,0.12);
+        border-color: rgba(84,213,189,0.24);
+      }
+      .topbar {
+        border-radius: 12px 12px 0 0;
+        margin-top: 0.25rem;
+        padding: 0.82rem 1.05rem;
+        background:
+          linear-gradient(90deg, rgba(84,213,189,0.13), transparent 42%),
+          linear-gradient(90deg, #0d2a3d 0%, #113d56 100%);
+        box-shadow: 0 16px 38px rgba(16,47,67,0.12);
+      }
+      .topbar-title {
+        font-size: 1.08rem;
+        letter-spacing: 0;
+      }
+      .brand-logo {
+        height: 2.65rem;
+      }
+      .topbar-pill {
+        border-radius: 10px;
+        padding: 0.42rem 0.72rem;
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.16);
+        font-size: 0.78rem;
+      }
+      .hero {
+        border-radius: 0 0 12px 12px;
+        padding: 1.05rem 1.15rem 1.1rem;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(251,253,254,0.92));
+        box-shadow: 0 18px 44px rgba(16,47,67,0.07);
+      }
+      .hero h1 {
+        font-size: clamp(1.55rem, 2.3vw, 2.15rem);
+        letter-spacing: 0;
+      }
+      .hero p {
+        font-size: 0.94rem;
+      }
+      .subhero {
+        gap: 0.7rem;
+      }
+      .subhero-card,
+      .dashboard-section,
+      .scenario-card,
+      .planning-metric,
+      .library-card,
+      .comparison-delta-card,
+      .map-mini-stat,
+      .asset-summary,
+      .empty-state,
+      .report-shell {
+        border-radius: 10px;
+      }
+      .subhero-card,
+      .scenario-card,
+      .planning-metric,
+      .library-card,
+      .comparison-delta-card,
+      .map-mini-stat {
+        background: rgba(255,255,255,0.82);
+        border-color: rgba(16,47,67,0.09);
+        box-shadow: none;
+      }
+      .dashboard-section {
+        background: rgba(255,255,255,0.76);
+        border-color: rgba(16,47,67,0.09);
+        box-shadow: 0 16px 42px rgba(16,47,67,0.06);
+        backdrop-filter: blur(10px);
+      }
+      .control-shell,
+      .insight-shell {
+        background: rgba(255,255,255,0.74);
+      }
+      .workspace-step {
+        border-radius: 10px;
+        background: rgba(255,255,255,0.72);
+        box-shadow: none;
+      }
+      .workspace-step--active {
+        background: linear-gradient(180deg, rgba(230,247,242,0.95), rgba(255,255,255,0.78));
+        border-color: rgba(22,163,137,0.34);
+      }
+      .scenario-card--accent {
+        background: linear-gradient(180deg, rgba(230,247,242,0.92), rgba(255,255,255,0.82));
+        border-color: rgba(22,163,137,0.32);
+      }
+      .scenario-card--comparison {
+        background: linear-gradient(180deg, rgba(237,243,246,0.94), rgba(255,255,255,0.82));
+        border-color: rgba(16,47,67,0.12);
+      }
+      .scenario-kicker,
+      .planning-metric-label,
+      .map-mini-label,
+      .subhero-label {
+        letter-spacing: 0.12em;
+        color: #718290;
+      }
+      .scenario-name,
+      .planning-metric-value,
+      .map-mini-value,
+      .library-card-title,
+      .subhero-value {
+        color: #102f43;
+      }
+      .planning-metric {
+        min-height: 5.75rem;
+      }
+      .planning-metric-value {
+        font-size: clamp(1.25rem, 1.8vw, 1.7rem);
+      }
+      .library-card--active {
+        border-color: rgba(22,163,137,0.48);
+        box-shadow: inset 0 0 0 1px rgba(22,163,137,0.15);
+      }
+      .library-card-metrics span {
+        border-radius: 8px;
+        background: rgba(16,47,67,0.05);
+      }
+      div[data-testid="stMetric"] {
+        border-radius: 10px;
+        background: rgba(255,255,255,0.82);
+        box-shadow: none;
+      }
+      .stDataFrame,
+      .stPlotlyChart {
+        border-radius: 10px;
+        box-shadow: none;
+        border-color: rgba(16,47,67,0.08);
+      }
+      .stButton button,
+      .stDownloadButton button {
+        border-radius: 10px !important;
+        min-height: 2.55rem !important;
+        box-shadow: none !important;
+      }
+      .stButton button[kind="primary"] {
+        background: linear-gradient(90deg, #102f43 0%, #16a389 100%) !important;
+        box-shadow: 0 14px 28px rgba(22,163,137,0.16) !important;
       }
     </style>
     <div class="topbar">
@@ -978,6 +1451,12 @@ def format_compact_number(value: float) -> str:
     return f"{value:,.0f}"
 
 
+def format_emissions(value_kg: float) -> str:
+    if abs(value_kg) >= 1000:
+        return f"{value_kg / 1000:,.1f} t CO2e"
+    return f"{value_kg:,.0f} kg CO2e"
+
+
 def format_uploaded_size(num_bytes: int) -> str:
     if num_bytes >= 1024 * 1024:
         return f"{num_bytes / (1024 * 1024):.1f} MB"
@@ -999,6 +1478,25 @@ def render_panel_header(title: str, description: str | None = None) -> None:
     st.markdown(f"### {title}")
     if description:
         st.markdown(f'<p class="panel-lead">{description}</p>', unsafe_allow_html=True)
+
+
+def render_workspace_rail(active_step: str = "Compare") -> None:
+    steps = [
+        ("Prepare", "Data and assumptions"),
+        ("Optimize", "Run and save results"),
+        ("Compare", "Choose plans and baselines"),
+        ("Package", "Export decisions"),
+    ]
+    cards = []
+    for label, description in steps:
+        state_class = " workspace-step--active" if label == active_step else ""
+        cards.append(
+            f'<div class="workspace-step{state_class}">'
+            f"<strong>{html.escape(label)}</strong>"
+            f"<span>{html.escape(description)}</span>"
+            "</div>"
+        )
+    st.markdown(f'<div class="workspace-rail">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
 def render_station_preview(stations_upload) -> None:
@@ -1092,6 +1590,8 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
     best_demand = solutions.get("Best Demand", {}).get("metrics", {})
     best_stress = solutions.get("Best Stress", {}).get("metrics", {})
     best_cost = solutions.get("Best Cost", {}).get("metrics", {})
+    config = run_payload.get("config", {})
+    recommended_impact = estimate_impact_metrics(float(recommended["demand"]), config)
 
     selected_station_rows = pd.DataFrame(recommended_solution.get("selected_stations", []))
     if not selected_station_rows.empty:
@@ -1133,7 +1633,6 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
         stress_reduction = float(best_demand["stress"]) - float(recommended["stress"])
         cost_reduction = float(best_demand["cost"]) - float(recommended["cost"])
 
-    config = run_payload.get("config", {})
     lines = [
         "# City Decision Report",
         "",
@@ -1142,7 +1641,9 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
             f"The recommended implementation strategy is the **{recommended_name} solution**. "
             f"It covers approximately **{recommended['demand']:,.0f} trips**, using "
             f"**{int(recommended['selected_stations'])} stations** and **{int(recommended['selected_links'])} upgraded links**, "
-            f"with total modeled stress of **{recommended['stress']:,.1f}** and total modeled cost of **{recommended['cost']:,.0f}**."
+            f"with total modeled stress of **{recommended['stress']:,.1f}** and total modeled cost of **{recommended['cost']:,.0f}**. "
+            f"Using the impact assumptions below, this scenario has an estimated **{recommended_impact['Mode Shift Potential']:,.0f} shifted trips** "
+            f"and **{format_emissions(recommended_impact['Emissions Reduction'])}** of emissions reduction potential for the modeled demand period."
         ),
     ]
     if demand_gap is not None and stress_reduction is not None and cost_reduction is not None:
@@ -1187,6 +1688,11 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
             "The balanced solution is the most suitable package for decision-makers because it preserves most of the attainable demand while avoiding the extreme cost and stress associated with the demand-maximizing alternative.",
             "This means the city should emphasize targeted station deployment in high-demand areas and selective low-stress corridor upgrades, rather than pursuing network densification everywhere at once.",
             "",
+            "## Climate and Mode Shift Assumptions",
+            f"- Mode shift capture rate: {float(config.get('mode_shift_rate', DEFAULT_MODE_SHIFT_RATE)) * 100:.1f}% of covered demand",
+            f"- Average replaced trip distance: {float(config.get('average_trip_distance_km', DEFAULT_AVERAGE_TRIP_DISTANCE_KM)):.1f} km",
+            f"- Car emissions factor: {float(config.get('car_emission_factor_g_per_km', DEFAULT_CAR_EMISSION_FACTOR_G_PER_KM)):.0f} g CO2e per km",
+            "",
             "## Implementation Guidance",
             "1. Deliver the selected stations and corridor upgrades as one coordinated package rather than separate projects.",
             "2. Sequence early implementation around the highest-demand stations first, then add the remaining selected corridors to complete continuity.",
@@ -1204,16 +1710,19 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
     if best_stress or best_cost or best_demand:
         lines.extend(["", "## Comparison to Other Representative Alternatives"])
         if best_stress:
+            impact = estimate_impact_metrics(float(best_stress["demand"]), config)
             lines.append(
-                f"- **Best Stress**: {best_stress['demand']:,.0f} trips, stress {best_stress['stress']:,.1f}, cost {best_stress['cost']:,.0f}."
+                f"- **Best Stress**: {best_stress['demand']:,.0f} trips, stress {best_stress['stress']:,.1f}, cost {best_stress['cost']:,.0f}, emissions reduction {format_emissions(impact['Emissions Reduction'])}."
             )
         if best_cost:
+            impact = estimate_impact_metrics(float(best_cost["demand"]), config)
             lines.append(
-                f"- **Best Cost**: {best_cost['demand']:,.0f} trips, stress {best_cost['stress']:,.1f}, cost {best_cost['cost']:,.0f}."
+                f"- **Best Cost**: {best_cost['demand']:,.0f} trips, stress {best_cost['stress']:,.1f}, cost {best_cost['cost']:,.0f}, emissions reduction {format_emissions(impact['Emissions Reduction'])}."
             )
         if best_demand:
+            impact = estimate_impact_metrics(float(best_demand["demand"]), config)
             lines.append(
-                f"- **Best Demand**: {best_demand['demand']:,.0f} trips, stress {best_demand['stress']:,.1f}, cost {best_demand['cost']:,.0f}."
+                f"- **Best Demand**: {best_demand['demand']:,.0f} trips, stress {best_demand['stress']:,.1f}, cost {best_demand['cost']:,.0f}, emissions reduction {format_emissions(impact['Emissions Reduction'])}."
             )
     return "\n".join(lines)
 
@@ -1301,7 +1810,36 @@ with st.sidebar.expander("Open cost model", expanded=True):
     link_cost_lts4_per_km = st.number_input("Link cost for LTS 4 (per km)", min_value=0.0, value=10000.0, step=1000.0)
 
 render_sidebar_section_heading(
-    "4. Network Requirements",
+    "4. Impact Assumptions",
+    "Estimate climate and travel behavior effects.",
+    "These assumptions translate covered bike-share demand into approximate shifted trips and avoided car emissions. They do not rerun the optimizer; they make scenario comparisons easier for stakeholders.",
+)
+with st.sidebar.expander("Open impact model", expanded=False):
+    mode_shift_rate_pct = st.slider(
+        "Mode shift capture (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=DEFAULT_MODE_SHIFT_RATE * 100,
+        step=1.0,
+        help="Share of covered demand assumed to represent trips shifted from other modes.",
+    )
+    average_trip_distance_km = st.number_input(
+        "Average shifted trip distance (km)",
+        min_value=0.1,
+        value=DEFAULT_AVERAGE_TRIP_DISTANCE_KM,
+        step=0.1,
+        help="Average length of each shifted trip used for emissions estimates.",
+    )
+    car_emission_factor_g_per_km = st.number_input(
+        "Car emissions factor (g CO2e/km)",
+        min_value=0.0,
+        value=DEFAULT_CAR_EMISSION_FACTOR_G_PER_KM,
+        step=5.0,
+        help="Tailpipe or lifecycle factor used to estimate avoided emissions.",
+    )
+
+render_sidebar_section_heading(
+    "5. Network Requirements",
     "Set the minimum scale of the final network.",
     "These thresholds act as guardrails. They tell Velora the smallest number of stations and upgraded links that still count as an acceptable solution.",
 )
@@ -1322,7 +1860,7 @@ with st.sidebar.expander("Open network rules", expanded=True):
     )
 
 render_sidebar_section_heading(
-    "5. Optimization Engine",
+    "6. Optimization Engine",
     "Tune the search depth and repeatability.",
     "Population size and generations control how aggressively the evolutionary search explores alternatives. Use the seed to reproduce a run when you want a consistent comparison.",
 )
@@ -1464,27 +2002,29 @@ def wait_for_job(base_url: str, job_id: str) -> dict[str, Any]:
 def build_solution_summary_rows(run_payload: dict[str, Any]) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for name, payload in run_payload["solutions"].items():
-        metrics = payload["metrics"]
-        avg_lts = metrics.get("avg_lts")
-        if avg_lts is None:
-            avg_lts = float(metrics.get("stress", 0.0)) / max(1, int(metrics.get("selected_links", 0)))
+        metrics = get_solution_display_metrics(payload, run_payload.get("config", {}))
         rows.append(
             {
                 "Solution": name,
-                "Demand Coverage": float(metrics["demand"]),
-                "Average LTS": float(avg_lts),
-                "Total Cost": float(metrics["cost"]),
-                "Stations": int(metrics["selected_stations"]),
-                "Links": int(metrics["selected_links"]),
+                "Demand Coverage": metrics["Demand Coverage"],
+                "Average LTS": metrics["Average LTS"],
+                "Total Cost": metrics["Total Cost"],
+                "Mode Shift Potential": metrics["Mode Shift Potential"],
+                "Emissions Reduction": metrics["Emissions Reduction"],
+                "Stations": metrics["Stations"],
+                "Links": metrics["Links"],
             }
         )
     return pd.DataFrame(rows)
 
 
-def build_scenario_summary_rows(scenario_entries: dict[str, dict[str, Any]]) -> pd.DataFrame:
+def build_scenario_summary_rows(
+    scenario_entries: dict[str, dict[str, Any]],
+    config: dict[str, Any] | None = None,
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for scenario_id, entry in scenario_entries.items():
-        metrics = get_solution_display_metrics(entry["solution"])
+        metrics = get_solution_display_metrics(entry["solution"], config)
         rows.append(
             {
                 "Scenario ID": scenario_id,
@@ -1494,6 +2034,8 @@ def build_scenario_summary_rows(scenario_entries: dict[str, dict[str, Any]]) -> 
                 "Demand Coverage": metrics["Demand Coverage"],
                 "Average LTS": metrics["Average LTS"],
                 "Total Cost": metrics["Total Cost"],
+                "Mode Shift Potential": metrics["Mode Shift Potential"],
+                "Emissions Reduction": metrics["Emissions Reduction"],
                 "Stations": metrics["Stations"],
                 "Links": metrics["Links"],
                 "Notes": entry.get("notes", ""),
@@ -1503,15 +2045,44 @@ def build_scenario_summary_rows(scenario_entries: dict[str, dict[str, Any]]) -> 
     return pd.DataFrame(rows)
 
 
-def get_solution_display_metrics(solution: dict[str, Any]) -> dict[str, float]:
+def get_impact_assumptions(config: dict[str, Any] | None = None) -> dict[str, float]:
+    config = config or {}
+    return {
+        "mode_shift_rate": float(config.get("mode_shift_rate", DEFAULT_MODE_SHIFT_RATE)),
+        "average_trip_distance_km": float(config.get("average_trip_distance_km", DEFAULT_AVERAGE_TRIP_DISTANCE_KM)),
+        "car_emission_factor_g_per_km": float(
+            config.get("car_emission_factor_g_per_km", DEFAULT_CAR_EMISSION_FACTOR_G_PER_KM)
+        ),
+    }
+
+
+def estimate_impact_metrics(demand_coverage: float, config: dict[str, Any] | None = None) -> dict[str, float]:
+    assumptions = get_impact_assumptions(config)
+    mode_shift_trips = max(0.0, demand_coverage * assumptions["mode_shift_rate"])
+    emissions_kg = (
+        mode_shift_trips
+        * assumptions["average_trip_distance_km"]
+        * assumptions["car_emission_factor_g_per_km"]
+        / 1000.0
+    )
+    return {
+        "Mode Shift Potential": mode_shift_trips,
+        "Emissions Reduction": emissions_kg,
+    }
+
+
+def get_solution_display_metrics(solution: dict[str, Any], config: dict[str, Any] | None = None) -> dict[str, float]:
     metrics = solution["metrics"]
     avg_lts = metrics.get("avg_lts")
     if avg_lts is None:
         avg_lts = float(metrics.get("stress", 0.0)) / max(1, int(metrics.get("selected_links", 0)))
+    demand_coverage = float(metrics["demand"])
+    impact_metrics = estimate_impact_metrics(demand_coverage, config)
     return {
-        "Demand Coverage": float(metrics["demand"]),
+        "Demand Coverage": demand_coverage,
         "Average LTS": float(avg_lts),
         "Total Cost": float(metrics["cost"]),
+        **impact_metrics,
         "Stations": int(metrics["selected_stations"]),
         "Links": int(metrics["selected_links"]),
     }
@@ -1584,22 +2155,154 @@ def format_percent_delta(current: float, baseline: float) -> str:
     return f"{((current - baseline) / baseline) * 100:+.1f}%"
 
 
+def delta_class_from_values(current: float, baseline: float, lower_is_better: bool = False) -> str:
+    diff = current - baseline
+    if abs(diff) < 1e-9:
+        return "neutral"
+    improved = diff < 0 if lower_is_better else diff > 0
+    return "positive" if improved else "negative"
+
+
+def render_planning_metric_grid(metrics: dict[str, Any], baseline: dict[str, Any] | None = None) -> None:
+    metric_specs = [
+        ("Demand coverage", f"{metrics['Demand Coverage']:,.0f}", "covered trips", "Demand Coverage", False, False),
+        ("Mode shift potential", f"{metrics['Mode Shift Potential']:,.0f}", "shifted trips", "Mode Shift Potential", False, False),
+        ("Emissions reduction", format_emissions(metrics["Emissions Reduction"]), "modeled demand period", "Emissions Reduction", False, False),
+        ("Total cost", format_cost(metrics["Total Cost"]), "investment estimate", "Total Cost", True, False),
+        ("Average LTS", f"{metrics['Average LTS']:.2f}", "lower stress is better", "Average LTS", True, True),
+    ]
+    cards = []
+    for label, value, note, key, lower_is_better, wide in metric_specs:
+        delta_markup = ""
+        if baseline:
+            delta_text = (
+                f"{metrics[key] - baseline[key]:+.2f}"
+                if key == "Average LTS"
+                else format_percent_delta(metrics[key], baseline[key])
+            )
+            delta_class = delta_class_from_values(metrics[key], baseline[key], lower_is_better=lower_is_better)
+            delta_markup = f'<span class="delta-pill delta-pill--{delta_class}">{html.escape(delta_text)}</span>'
+        wide_class = " planning-metric--wide" if wide else ""
+        cards.append(
+            f'<div class="planning-metric{wide_class}">'
+            f'<span class="planning-metric-label">{html.escape(label)}</span>'
+            f'<span class="planning-metric-value">{html.escape(value)}</span>'
+            f"{delta_markup}"
+            f'<span class="planning-metric-note">{html.escape(note)}</span>'
+            "</div>"
+        )
+    st.markdown(f'<div class="planning-metric-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def summarize_selected_assets(solution: dict[str, Any]) -> dict[str, float]:
+    links = solution.get("selected_links", [])
+    total_length_km = sum(float(item.get("total_length", 0.0)) for item in links) / 1000.0
+    return {
+        "stations": float(len(solution.get("selected_stations", []))),
+        "links": float(len(links)),
+        "length_km": total_length_km,
+    }
+
+
+def render_asset_summary(solution: dict[str, Any], baseline_solution: dict[str, Any] | None = None) -> None:
+    assets = summarize_selected_assets(solution)
+    summary = (
+        f"{int(assets['stations'])} selected stations, {int(assets['links'])} upgraded links, "
+        f"and {assets['length_km']:.1f} km of selected corridors."
+    )
+    if baseline_solution:
+        baseline_assets = summarize_selected_assets(baseline_solution)
+        summary += (
+            f" Compared with the baseline: {int(assets['stations'] - baseline_assets['stations']):+d} stations, "
+            f"{int(assets['links'] - baseline_assets['links']):+d} links, "
+            f"{assets['length_km'] - baseline_assets['length_km']:+.1f} km."
+        )
+    st.markdown(f'<div class="asset-summary">{html.escape(summary)}</div>', unsafe_allow_html=True)
+
+
+def render_scenario_cards(
+    scenario_entries: dict[str, dict[str, Any]],
+    selected_scenario_id: str,
+    config: dict[str, Any] | None = None,
+) -> None:
+    cards = []
+    for scenario_id, entry in scenario_entries.items():
+        metrics = get_solution_display_metrics(entry["solution"], config)
+        active_class = " library-card--active" if scenario_id == selected_scenario_id else ""
+        note = entry.get("notes") or f"{entry['kind']} from {entry['source_label']}"
+        cards.append(
+            f'<div class="library-card{active_class}">'
+            f'<span class="library-card-title">{html.escape(entry["label"])}</span>'
+            f'<span class="library-card-meta">{html.escape(entry["kind"])} · {html.escape(entry["source_label"])}</span>'
+            f'<span class="library-card-note">{html.escape(str(note))}</span>'
+            '<div class="library-card-metrics">'
+            f"<span>{metrics['Demand Coverage']:,.0f} demand</span>"
+            f"<span>{format_emissions(metrics['Emissions Reduction'])}</span>"
+            f"<span>{format_cost(metrics['Total Cost'])} cost</span>"
+            "</div>"
+            "</div>"
+        )
+    st.markdown(f'<div class="scenario-library-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def render_comparison_delta_cards(candidate_metrics: dict[str, Any], baseline_metrics: dict[str, Any]) -> None:
+    specs = [
+        ("Demand", candidate_metrics["Demand Coverage"], baseline_metrics["Demand Coverage"], False, "covered trips"),
+        ("Mode shift", candidate_metrics["Mode Shift Potential"], baseline_metrics["Mode Shift Potential"], False, "shifted trips"),
+        ("Emissions", candidate_metrics["Emissions Reduction"], baseline_metrics["Emissions Reduction"], False, "kg CO2e"),
+        ("Cost", candidate_metrics["Total Cost"], baseline_metrics["Total Cost"], True, "investment"),
+        ("Average LTS", candidate_metrics["Average LTS"], baseline_metrics["Average LTS"], True, "network stress"),
+    ]
+    cards = []
+    for label, current, baseline, lower_is_better, note in specs:
+        if label == "Emissions":
+            value = format_emissions(current - baseline)
+        elif label == "Average LTS":
+            value = f"{current - baseline:+.2f}"
+        else:
+            value = f"{current - baseline:+,.0f}"
+        direction = delta_class_from_values(current, baseline, lower_is_better=lower_is_better)
+        cards.append(
+            '<div class="comparison-delta-card">'
+            f"<strong>{html.escape(label)}</strong>"
+            f'<span class="delta-pill delta-pill--{direction}">{html.escape(value)}</span>'
+            f"<span>{html.escape(note)}</span>"
+            "</div>"
+        )
+    st.markdown(f'<div class="comparison-delta-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
+def build_comparison_interpretation(candidate_metrics: dict[str, Any], baseline_metrics: dict[str, Any]) -> str:
+    demand_delta = format_percent_delta(candidate_metrics["Demand Coverage"], baseline_metrics["Demand Coverage"])
+    emissions_delta = format_percent_delta(candidate_metrics["Emissions Reduction"], baseline_metrics["Emissions Reduction"])
+    cost_delta = format_percent_delta(candidate_metrics["Total Cost"], baseline_metrics["Total Cost"])
+    lts_delta = candidate_metrics["Average LTS"] - baseline_metrics["Average LTS"]
+    stress_phrase = "lower" if lts_delta < 0 else "higher" if lts_delta > 0 else "unchanged"
+    return (
+        f"This candidate changes demand by {demand_delta}, emissions reduction potential by {emissions_delta}, "
+        f"and cost by {cost_delta}. Average LTS is {stress_phrase} by {abs(lts_delta):.2f}."
+    )
+
+
 def build_decision_insight(adjusted_solution: dict[str, Any], baseline_name: str | None = None, baseline_metrics: dict[str, Any] | None = None) -> str:
     metrics = adjusted_solution["metrics"]
     insight = (
         f"This plan activates {metrics['Stations']} stations and {metrics['Links']} upgraded links, "
-        f"balancing demand coverage, cost, and network stress in one representative scenario."
+        f"with an estimated mode shift potential of {metrics['Mode Shift Potential']:,.0f} trips and "
+        f"{format_emissions(metrics['Emissions Reduction'])} avoided for the modeled demand period."
     )
     if baseline_name and baseline_metrics:
         demand_delta = metrics["Demand Coverage"] - baseline_metrics["Demand Coverage"]
         cost_delta = metrics["Total Cost"] - baseline_metrics["Total Cost"]
         stress_delta = metrics["Average LTS"] - baseline_metrics["Average LTS"]
+        emissions_delta = metrics["Emissions Reduction"] - baseline_metrics["Emissions Reduction"]
         insight += (
             f" Compared with {baseline_name}, demand changes by {demand_delta:,.0f} "
             f"({format_percent_delta(metrics['Demand Coverage'], baseline_metrics['Demand Coverage'])}), "
             f"cost changes by {cost_delta:,.0f} "
             f"({format_percent_delta(metrics['Total Cost'], baseline_metrics['Total Cost'])}), "
-            f"and average LTS changes by {stress_delta:+.2f}."
+            f"average LTS changes by {stress_delta:+.2f}, and emissions reduction changes by "
+            f"{format_emissions(emissions_delta)}."
         )
     return insight
 
@@ -1623,6 +2326,7 @@ def build_map_figure(
     show_stations: bool,
     show_links: bool,
     show_demand_overlay: bool,
+    performance_mode: bool,
     max_lts_filter: int,
     route_length_range_km: tuple[float, float],
 ) -> go.Figure:
@@ -1632,7 +2336,9 @@ def build_map_figure(
 
     for trace in fig.data:
         trace_kind = classify_map_trace(trace)
-        if trace_kind in {"current_stations", "candidate_stations", "selected_stations"}:
+        if trace_kind in {"current_stations", "candidate_stations"}:
+            trace.visible = show_stations and not performance_mode
+        elif trace_kind == "selected_stations":
             trace.visible = show_stations
         elif trace_kind == "links":
             meta = getattr(trace, "meta", None)
@@ -1700,7 +2406,7 @@ def build_map_figure(
 
     fig.update_layout(
         title=None,
-        height=700,
+        height=660 if performance_mode else 720,
         margin=dict(l=0, r=0, t=0, b=0),
         mapbox=dict(style="carto-positron", zoom=11.8),
         legend=dict(
@@ -1731,35 +2437,12 @@ def render_kpis(adjusted_solution: dict[str, Any], compare_metrics: dict[str, An
         st.caption(f"Delta values are shown against {baseline_label}.")
     else:
         st.caption("This snapshot summarizes the currently selected scenario.")
-    metric_cols = st.columns(2)
-    metric_cols[0].metric(
-        "Demand coverage",
-        f"{metrics['Demand Coverage']:,.0f}",
-        format_percent_delta(metrics["Demand Coverage"], baseline["Demand Coverage"]) if baseline else None,
-    )
-    metric_cols[1].metric(
-        "Total cost",
-        format_cost(metrics["Total Cost"]),
-        format_percent_delta(metrics["Total Cost"], baseline["Total Cost"]) if baseline else None,
-    )
-    metric_cols = st.columns(2)
-    metric_cols[0].metric(
-        "Average LTS",
-        f"{metrics['Average LTS']:.2f}",
-        f"{metrics['Average LTS'] - baseline['Average LTS']:+.2f}" if baseline else None,
-    )
-    metric_cols[1].metric(
-        "Active assets",
-        f"{int(metrics['Stations'])} st / {int(metrics['Links'])} lk",
-        (
-            f"{int(metrics['Stations'] - baseline['Stations']):+d} / "
-            f"{int(metrics['Links'] - baseline['Links']):+d}"
-        ) if baseline else None,
-    )
+    render_planning_metric_grid(metrics, baseline)
     if compare_metrics is not None:
         st.caption(
             f"Against the comparison scenario: demand {metrics['Demand Coverage'] - compare_metrics['Demand Coverage']:,.0f}, "
             f"cost {metrics['Total Cost'] - compare_metrics['Total Cost']:,.0f}, "
+            f"emissions {format_emissions(metrics['Emissions Reduction'] - compare_metrics['Emissions Reduction'])}, "
             f"LTS {metrics['Average LTS'] - compare_metrics['Average LTS']:+.2f}."
         )
 
@@ -1790,11 +2473,20 @@ def render_pareto(run_payload: dict[str, Any], selected_solution_name: str) -> s
                         color=["#0b3552" if name == selected_solution_name else "#ffffff" for name in summary_df["Solution"]],
                     ),
                 ),
-                customdata=summary_df["Solution"],
+                customdata=np.stack(
+                    [
+                        summary_df["Solution"],
+                        summary_df["Mode Shift Potential"],
+                        summary_df["Emissions Reduction"],
+                    ],
+                    axis=-1,
+                ),
                 hovertemplate=(
-                    "<b>%{customdata}</b><br>"
+                    "<b>%{customdata[0]}</b><br>"
                     "Cost: %{x:,.0f}<br>"
                     "Demand: %{y:,.0f}<br>"
+                    "Mode shift: %{customdata[1]:,.0f} trips<br>"
+                    "Emissions reduction: %{customdata[2]:,.0f} kg CO2e<br>"
                     "Average LTS: %{marker.color:.2f}<extra></extra>"
                 ),
             )
@@ -1839,17 +2531,31 @@ def render_map(
     show_stations: bool,
     show_links: bool,
     show_demand_overlay: bool,
+    performance_mode: bool,
     max_lts_filter: int,
     route_length_range_km: tuple[float, float],
 ) -> None:
     solution = selected_entry["solution"]
     compare_solution = compare_entry["solution"] if compare_entry else None
+    assets = summarize_selected_assets(solution)
+    st.markdown(
+        '<div class="map-mini-stats">'
+        '<div class="map-mini-stat"><span class="map-mini-label">Selected stations</span>'
+        f'<span class="map-mini-value">{int(assets["stations"])}</span></div>'
+        '<div class="map-mini-stat"><span class="map-mini-label">Upgraded links</span>'
+        f'<span class="map-mini-value">{int(assets["links"])}</span></div>'
+        '<div class="map-mini-stat"><span class="map-mini-label">Corridor length</span>'
+        f'<span class="map-mini-value">{assets["length_km"]:.1f} km</span></div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     map_fig = build_map_figure(
         solution,
         compare_solution,
         show_stations=show_stations,
         show_links=show_links,
         show_demand_overlay=show_demand_overlay,
+        performance_mode=performance_mode,
         max_lts_filter=max_lts_filter,
         route_length_range_km=route_length_range_km,
     )
@@ -1858,7 +2564,10 @@ def render_map(
         use_container_width=True,
         key=f"decision_map_{run_id}_{selected_entry['id']}_{compare_entry['id'] if compare_entry else 'none'}",
     )
-    st.caption("Hover the map to inspect station demand and docks, or route distance and previous LTS for each upgraded corridor.")
+    if performance_mode:
+        st.caption("Performance mode is showing selected scenario assets first. Turn it off when you need wider station context.")
+    else:
+        st.caption("Hover the map to inspect station demand and docks, or route distance and previous LTS for each upgraded corridor.")
     station_layer_notes: list[str] = []
     for trace in map_fig.data:
         meta = getattr(trace, "meta", None)
@@ -1868,6 +2577,89 @@ def render_map(
             station_layer_notes.append(f"{layer_name}: showing {rendered_points} highest-demand points")
     if station_layer_notes:
         st.caption("For performance, large background station layers are sampled on the map: " + " | ".join(station_layer_notes) + ".")
+
+
+def render_scenario_studio(
+    run_id: str,
+    selected_entry: dict[str, Any],
+    scenario_entries: dict[str, dict[str, Any]],
+    built_in_solution_names: list[str],
+) -> None:
+    open_panel("action-shell")
+    render_panel_header(
+        "Scenario studio",
+        "Save, annotate, and manage stakeholder-ready planning alternatives.",
+    )
+    with st.expander("Save or manage stakeholder scenarios", expanded=False):
+        studio_cols = st.columns([1.1, 1.6])
+        with studio_cols[0]:
+            scenario_label = st.text_input(
+                "Scenario name",
+                value=st.session_state.get(f"scenario_label_{run_id}", selected_entry["label"]),
+                key=f"scenario_label_input_{run_id}",
+                help="Use a clear planning name like Safety First, East-West Focus, or Low Budget Alternative.",
+            )
+            scenario_notes = st.text_area(
+                "Scenario notes",
+                value=st.session_state.get(f"scenario_notes_{run_id}", ""),
+                key=f"scenario_notes_input_{run_id}",
+                height=110,
+                help="Capture why this scenario matters, what assumptions it reflects, or who requested it.",
+            )
+            if st.button("Save Active Scenario", type="primary", use_container_width=True, key=f"save_scenario_{run_id}"):
+                clean_label = scenario_label.strip()
+                if not clean_label:
+                    st.warning("Provide a scenario name before saving.")
+                else:
+                    save_scenario_snapshot(
+                        run_id,
+                        {
+                            "snapshot_id": uuid.uuid4().hex[:10],
+                            "label": clean_label,
+                            "notes": scenario_notes.strip(),
+                            "created_at": datetime.now().isoformat(timespec="seconds"),
+                            "source_label": selected_entry["label"],
+                            "solution": selected_entry["solution"],
+                        },
+                    )
+                    st.session_state[f"scenario_label_{run_id}"] = ""
+                    st.session_state[f"scenario_notes_{run_id}"] = ""
+                    st.rerun()
+        with studio_cols[1]:
+            saved_snapshot_rows = [
+                {
+                    "Scenario": entry["label"],
+                    "Source": entry["source_label"],
+                    "Created": entry["created_at"],
+                    "Notes": entry.get("notes", ""),
+                }
+                for entry in scenario_entries.values()
+                if entry["kind"] == "Saved stakeholder scenario"
+            ]
+            if saved_snapshot_rows:
+                st.dataframe(pd.DataFrame(saved_snapshot_rows), use_container_width=True, hide_index=True)
+                snapshot_options = [
+                    entry["id"]
+                    for entry in scenario_entries.values()
+                    if entry["kind"] == "Saved stakeholder scenario"
+                ]
+                snapshot_to_delete = st.selectbox(
+                    "Delete saved scenario",
+                    snapshot_options,
+                    format_func=lambda item: scenario_entries[item]["label"],
+                    key=f"snapshot_delete_select_{run_id}",
+                )
+                if st.button("Delete Saved Scenario", use_container_width=True, key=f"delete_snapshot_{run_id}"):
+                    delete_scenario_snapshot(run_id, scenario_entries[snapshot_to_delete]["snapshot_id"])
+                    if st.session_state.get(f"selected_scenario_id_{run_id}") == snapshot_to_delete:
+                        st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{built_in_solution_names[0]}"
+                    st.rerun()
+            else:
+                st.markdown(
+                    '<div class="empty-state">No stakeholder scenarios saved yet. Save one from the active scenario to build a reusable planning library.</div>',
+                    unsafe_allow_html=True,
+                )
+    close_panel()
 
 
 def render_run(run_payload: dict[str, Any]) -> None:
@@ -1883,13 +2675,13 @@ def render_run(run_payload: dict[str, Any]) -> None:
     if default_scenario_id not in scenario_entries:
         default_scenario_id = scenario_ids[0]
 
-    # Scenario Studio starts with one active scenario and an optional comparison baseline.
     open_panel("control-shell")
+    render_workspace_rail("Compare")
     render_panel_header(
-        "Scenario controls",
-        "Choose an optimizer scenario or a saved stakeholder scenario, then compare it against a baseline when needed.",
+        "Planning workspace",
+        "Choose the active plan, set a baseline, and keep map filters close to the decision surface.",
     )
-    top_controls = st.columns([1.5, 1.0, 1.0, 0.9])
+    top_controls = st.columns([1.45, 0.85, 1.15, 0.85])
     with top_controls[0]:
         selected_scenario_id = st.selectbox(
             "Active scenario",
@@ -1923,25 +2715,33 @@ def render_run(run_payload: dict[str, Any]) -> None:
 
     selected_entry = scenario_entries[selected_scenario_id]
     compare_entry = scenario_entries.get(compare_scenario_id) if compare_scenario_id else None
-    compare_metrics = get_solution_display_metrics(compare_entry["solution"]) if compare_entry else None
+    run_config = run_payload.get("config", {})
+    compare_metrics = get_solution_display_metrics(compare_entry["solution"], run_config) if compare_entry else None
     baseline_metrics = None
     baseline_label = None
     if compare_entry:
         baseline_metrics = compare_metrics
         baseline_label = compare_entry["label"]
     elif "Balanced" in run_payload["solutions"] and selected_entry["label"] != "Balanced":
-        baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"])
+        baseline_metrics = get_solution_display_metrics(run_payload["solutions"]["Balanced"], run_config)
         baseline_label = "Balanced"
 
-    filter_row = st.columns([0.95, 0.95, 1.4, 1.3])
+    filter_row = st.columns([0.9, 0.9, 1.1, 1.1, 1.35])
     with filter_row[0]:
         show_stations = st.checkbox("Show stations", value=True, key=f"show_stations_{run_id}")
     with filter_row[1]:
         show_links = st.checkbox("Show links", value=True, key=f"show_links_{run_id}")
     with filter_row[2]:
+        performance_mode = st.checkbox(
+            "Performance mode",
+            value=True,
+            key=f"performance_mode_{run_id}",
+            help="Keeps the map focused on selected assets and hides large context layers.",
+        )
+    with filter_row[3]:
         show_demand_overlay = st.checkbox(
             "Show demand bubbles",
-            value=True,
+            value=not st.session_state.get(f"performance_mode_{run_id}", True),
             key=f"show_demand_overlay_{run_id}",
             help="Displays a lightweight demand-size bubble around each selected station.",
         )
@@ -1950,7 +2750,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
         [float(item.get("total_length", 0.0)) / 1000.0 for item in selected_links_rows],
         default=0.0,
     )
-    with filter_row[3]:
+    with filter_row[4]:
         if max_lane_length_km > 0:
             route_length_range_km = st.slider(
                 "Route length (km)",
@@ -1964,23 +2764,33 @@ def render_run(run_payload: dict[str, Any]) -> None:
             route_length_range_km = (0.0, 0.0)
             st.caption("Route length filter becomes available once route geometry is present.")
     baseline_caption = compare_entry["label"] if compare_entry else (baseline_label or "No explicit baseline")
+    impact_assumptions = get_impact_assumptions(run_config)
+    selected_label_html = html.escape(str(selected_entry["label"]))
+    selected_kind_html = html.escape(str(selected_entry["kind"]))
+    selected_source_html = html.escape(str(selected_entry["source_label"]))
+    baseline_caption_html = html.escape(str(baseline_caption))
     st.markdown(
         f"""
         <div class="scenario-strip">
           <div class="scenario-card scenario-card--accent">
             <span class="scenario-kicker">Active Scenario</span>
-            <span class="scenario-name">{selected_entry['label']}</span>
-            <div class="scenario-meta">{selected_entry['kind']} · Source: {selected_entry['source_label']}</div>
+            <span class="scenario-name">{selected_label_html}</span>
+            <div class="scenario-meta">{selected_kind_html} · Source: {selected_source_html}</div>
           </div>
           <div class="scenario-card scenario-card--comparison">
             <span class="scenario-kicker">Baseline</span>
-            <span class="scenario-name">{baseline_caption}</span>
+            <span class="scenario-name">{baseline_caption_html}</span>
             <div class="scenario-meta">Used for KPI deltas and comparison workspace summaries.</div>
           </div>
           <div class="scenario-card">
             <span class="scenario-kicker">Map Filters</span>
             <span class="scenario-name">LTS ≤ {max_lts_filter}</span>
-            <div class="scenario-meta">Route range: {route_length_range_km[0]:.1f} to {route_length_range_km[1]:.1f} km</div>
+            <div class="scenario-meta">Route range: {route_length_range_km[0]:.1f} to {route_length_range_km[1]:.1f} km · {'Performance mode' if performance_mode else 'Full context'}</div>
+          </div>
+          <div class="scenario-card">
+            <span class="scenario-kicker">Impact Model</span>
+            <span class="scenario-name">{impact_assumptions['mode_shift_rate'] * 100:.0f}% shift capture</span>
+            <div class="scenario-meta">{impact_assumptions['average_trip_distance_km']:.1f} km/trip · {impact_assumptions['car_emission_factor_g_per_km']:.0f} g CO2e/km</div>
           </div>
         </div>
         """,
@@ -1988,7 +2798,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
     )
     close_panel()
 
-    selected_metrics = get_solution_display_metrics(selected_entry["solution"])
+    selected_metrics = get_solution_display_metrics(selected_entry["solution"], run_config)
     snapshot_payload = {
         "metrics": selected_metrics,
         "baseline": baseline_metrics,
@@ -1996,77 +2806,6 @@ def render_run(run_payload: dict[str, Any]) -> None:
     }
 
     st.session_state[f"selected_scenario_id_{run_id}"] = selected_scenario_id
-
-    open_panel("action-shell")
-    render_panel_header(
-        "Scenario studio",
-        "Save the active scenario with a stakeholder-friendly name and notes so it can be reused as a planning alternative.",
-    )
-    studio_cols = st.columns([1.2, 1.6])
-    with studio_cols[0]:
-        scenario_label = st.text_input(
-            "Scenario name",
-            value=st.session_state.get(f"scenario_label_{run_id}", selected_entry["label"]),
-            key=f"scenario_label_input_{run_id}",
-            help="Use a clear planning name like Safety First, East-West Focus, or Low Budget Alternative.",
-        )
-        scenario_notes = st.text_area(
-            "Scenario notes",
-            value=st.session_state.get(f"scenario_notes_{run_id}", ""),
-            key=f"scenario_notes_input_{run_id}",
-            height=120,
-            help="Capture why this scenario matters, what assumptions it reflects, or who requested it.",
-        )
-        if st.button("Save Active Scenario", type="primary", use_container_width=True, key=f"save_scenario_{run_id}"):
-            clean_label = scenario_label.strip()
-            if not clean_label:
-                st.warning("Provide a scenario name before saving.")
-            else:
-                save_scenario_snapshot(
-                    run_id,
-                    {
-                        "snapshot_id": uuid.uuid4().hex[:10],
-                        "label": clean_label,
-                        "notes": scenario_notes.strip(),
-                        "created_at": datetime.now().isoformat(timespec="seconds"),
-                        "source_label": selected_entry["label"],
-                        "solution": selected_entry["solution"],
-                    },
-                )
-                st.session_state[f"scenario_label_{run_id}"] = ""
-                st.session_state[f"scenario_notes_{run_id}"] = ""
-                st.rerun()
-    with studio_cols[1]:
-        saved_snapshot_rows = [
-            {
-                "Scenario": entry["label"],
-                "Source": entry["source_label"],
-                "Created": entry["created_at"],
-                "Notes": entry.get("notes", ""),
-            }
-            for entry in scenario_entries.values()
-            if entry["kind"] == "Saved stakeholder scenario"
-        ]
-        if saved_snapshot_rows:
-            st.dataframe(pd.DataFrame(saved_snapshot_rows), use_container_width=True, hide_index=True)
-            snapshot_options = [entry["id"] for entry in scenario_entries.values() if entry["kind"] == "Saved stakeholder scenario"]
-            snapshot_to_delete = st.selectbox(
-                "Delete saved scenario",
-                snapshot_options,
-                format_func=lambda item: scenario_entries[item]["label"],
-                key=f"snapshot_delete_select_{run_id}",
-            )
-            if st.button("Delete Saved Scenario", use_container_width=True, key=f"delete_snapshot_{run_id}"):
-                delete_scenario_snapshot(run_id, scenario_entries[snapshot_to_delete]["snapshot_id"])
-                if st.session_state.get(f"selected_scenario_id_{run_id}") == snapshot_to_delete:
-                    st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{built_in_solution_names[0]}"
-                st.rerun()
-        else:
-            st.markdown(
-                '<div class="empty-state">No stakeholder scenarios saved yet. Save one from the active scenario to build a reusable planning library.</div>',
-                unsafe_allow_html=True,
-            )
-    close_panel()
 
     main_cols = st.columns([1.9, 1], gap="large")
     with main_cols[0]:
@@ -2082,6 +2821,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
             show_stations=show_stations,
             show_links=show_links,
             show_demand_overlay=show_demand_overlay,
+            performance_mode=performance_mode,
             max_lts_filter=max_lts_filter,
             route_length_range_km=route_length_range_km,
         )
@@ -2089,6 +2829,10 @@ def render_run(run_payload: dict[str, Any]) -> None:
     with main_cols[1]:
         open_panel("insight-shell")
         render_kpis(snapshot_payload, compare_metrics=compare_metrics)
+        baseline_solution = compare_entry["solution"] if compare_entry else (
+            run_payload["solutions"].get("Balanced") if baseline_label == "Balanced" else None
+        )
+        render_asset_summary(selected_entry["solution"], baseline_solution)
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         st.markdown("### Why this solution?")
         st.info(build_decision_insight(snapshot_payload, baseline_label, baseline_metrics))
@@ -2097,6 +2841,8 @@ def render_run(run_payload: dict[str, Any]) -> None:
             st.markdown("### Scenario notes")
             st.caption(selected_entry["notes"])
         close_panel()
+
+    render_scenario_studio(run_id, selected_entry, scenario_entries, built_in_solution_names)
 
     open_panel()
     render_panel_header(
@@ -2114,30 +2860,46 @@ def render_run(run_payload: dict[str, Any]) -> None:
         st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{pareto_selected_solution_name}"
         st.rerun()
 
-    scenario_summary_df = build_scenario_summary_rows(scenario_entries)
+    scenario_summary_df = build_scenario_summary_rows(scenario_entries, run_config)
     bottom_cols = st.columns([1.25, 1.05], gap="large")
     with bottom_cols[0]:
         open_panel("comparison-shell")
         render_panel_header(
             "Scenario library",
-            "Compare optimizer scenarios and saved stakeholder scenarios in one table.",
+            "Review optimizer scenarios and saved stakeholder alternatives as reusable planning options.",
         )
+        render_scenario_cards(scenario_entries, selected_scenario_id, run_config)
         comparison_df = scenario_summary_df.copy()
         comparison_df["Cost / Demand"] = comparison_df["Total Cost"] / comparison_df["Demand Coverage"].replace(0, np.nan)
-        st.dataframe(
-            comparison_df[
-                ["Scenario", "Type", "Source", "Demand Coverage", "Average LTS", "Total Cost", "Stations", "Links", "Notes"]
-            ].style.format(
-                {
-                    "Demand Coverage": "{:,.0f}",
-                    "Average LTS": "{:.2f}",
-                    "Total Cost": "{:,.0f}",
-                    "Cost / Demand": "{:,.2f}",
-                }
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
+        with st.expander("Open detailed scenario table", expanded=False):
+            st.dataframe(
+                comparison_df[
+                    [
+                        "Scenario",
+                        "Type",
+                        "Source",
+                        "Demand Coverage",
+                        "Mode Shift Potential",
+                        "Emissions Reduction",
+                        "Average LTS",
+                        "Total Cost",
+                        "Stations",
+                        "Links",
+                        "Notes",
+                    ]
+                ].style.format(
+                    {
+                        "Demand Coverage": "{:,.0f}",
+                        "Mode Shift Potential": "{:,.0f}",
+                        "Emissions Reduction": "{:,.0f}",
+                        "Average LTS": "{:.2f}",
+                        "Total Cost": "{:,.0f}",
+                        "Cost / Demand": "{:,.2f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
         close_panel()
     with bottom_cols[1]:
         open_panel("comparison-shell")
@@ -2146,18 +2908,34 @@ def render_run(run_payload: dict[str, Any]) -> None:
             "Use the active scenario as the candidate and compare it against the chosen baseline.",
         )
         if compare_entry:
+            render_comparison_delta_cards(selected_metrics, compare_metrics)
+            st.info(build_comparison_interpretation(selected_metrics, compare_metrics))
             compare_rows = scenario_summary_df[scenario_summary_df["Scenario ID"].isin([selected_scenario_id, compare_scenario_id])].copy()
-            st.dataframe(
-                compare_rows[["Scenario", "Demand Coverage", "Average LTS", "Total Cost", "Stations", "Links"]].style.format(
-                    {
-                        "Demand Coverage": "{:,.0f}",
-                        "Average LTS": "{:.2f}",
-                        "Total Cost": "{:,.0f}",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
+            with st.expander("Open side-by-side values", expanded=False):
+                st.dataframe(
+                    compare_rows[
+                        [
+                            "Scenario",
+                            "Demand Coverage",
+                            "Mode Shift Potential",
+                            "Emissions Reduction",
+                            "Average LTS",
+                            "Total Cost",
+                            "Stations",
+                            "Links",
+                        ]
+                    ].style.format(
+                        {
+                            "Demand Coverage": "{:,.0f}",
+                            "Mode Shift Potential": "{:,.0f}",
+                            "Emissions Reduction": "{:,.0f}",
+                            "Average LTS": "{:.2f}",
+                            "Total Cost": "{:,.0f}",
+                        }
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
             diff_summary = build_difference_summary(selected_entry, compare_entry)
             st.markdown("### What changed")
             diff_cols = st.columns(2)
@@ -2251,7 +3029,7 @@ runs = fetch_runs(backend_url.rstrip("/"))
 selected_saved_run = None
 if runs:
     render_sidebar_section_heading(
-        "6. Saved Runs",
+        "7. Saved Runs",
         "Jump back into previous scenarios.",
         "Saved runs let you reopen past optimization results without rerunning the model. Use them to compare scenarios, revisit assumptions, or export a previously generated plan.",
     )
@@ -2316,6 +3094,9 @@ if run_button:
                     "link_cost_lts2_per_km": float(link_cost_lts2_per_km),
                     "link_cost_lts3_per_km": float(link_cost_lts3_per_km),
                     "link_cost_lts4_per_km": float(link_cost_lts4_per_km),
+                    "mode_shift_rate": float(mode_shift_rate_pct) / 100.0,
+                    "average_trip_distance_km": float(average_trip_distance_km),
+                    "car_emission_factor_g_per_km": float(car_emission_factor_g_per_km),
                 },
             )
             run_payload = wait_for_job(backend_url.rstrip("/"), job_response["job_id"])

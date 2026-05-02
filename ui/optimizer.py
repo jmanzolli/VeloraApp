@@ -53,6 +53,9 @@ class UIConfig:
     link_cost_lts2_per_km: float = 2_000_000.0
     link_cost_lts3_per_km: float = 4_000_000.0
     link_cost_lts4_per_km: float = 8_000_000.0
+    mode_shift_rate: float = 0.15
+    average_trip_distance_km: float = 2.5
+    car_emission_factor_g_per_km: float = 190.0
 
 
 @dataclass

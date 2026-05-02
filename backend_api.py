@@ -185,6 +185,9 @@ def optimize(
     link_cost_lts2_per_km: float = Form(2000000.0),
     link_cost_lts3_per_km: float = Form(4000000.0),
     link_cost_lts4_per_km: float = Form(8000000.0),
+    mode_shift_rate: float = Form(0.15),
+    average_trip_distance_km: float = Form(2.5),
+    car_emission_factor_g_per_km: float = Form(190.0),
 ) -> dict[str, Any]:
     try:
         config = UIConfig(
@@ -202,6 +205,9 @@ def optimize(
             link_cost_lts2_per_km=float(link_cost_lts2_per_km),
             link_cost_lts3_per_km=float(link_cost_lts3_per_km),
             link_cost_lts4_per_km=float(link_cost_lts4_per_km),
+            mode_shift_rate=float(mode_shift_rate),
+            average_trip_distance_km=float(average_trip_distance_km),
+            car_emission_factor_g_per_km=float(car_emission_factor_g_per_km),
         )
         stations_path = save_upload(station_file)
         network_path = save_upload(network_file)
