@@ -34,9 +34,11 @@ def load_asset_data_uri(path: Path) -> str:
     return f"data:{mime_type or 'application/octet-stream'};base64,{encoded}"
 
 
-LOGO_PATH = ASSETS_DIR / "velora_logo.svg"
-PAGE_ICON_PATH = ASSETS_DIR / "velora_logo.png"
+LOGO_PATH = ASSETS_DIR / "velora_wordmark.png"
+BADGE_PATH = ASSETS_DIR / "velora_badge.png"
+PAGE_ICON_PATH = BADGE_PATH
 LOGO_URI = load_asset_data_uri(LOGO_PATH)
+BADGE_URI = load_asset_data_uri(BADGE_PATH)
 
 DEFAULT_MODE_SHIFT_RATE = 0.15
 DEFAULT_AVERAGE_TRIP_DISTANCE_KM = 2.5
@@ -451,8 +453,14 @@ st.markdown(
         gap: 1rem;
       }
       .brand-logo {
-        height: 3.4rem;
+        height: 3rem;
         width: auto;
+        max-width: 15rem;
+        object-fit: contain;
+        border-radius: 16px;
+        padding: 0.32rem 0.72rem;
+        background: rgba(255,255,255,0.94);
+        box-shadow: inset 0 0 0 1px rgba(16,47,67,0.08), 0 10px 22px rgba(2,14,24,0.12);
       }
       .sidebar-brand-card {
         position: relative;
@@ -485,9 +493,10 @@ st.markdown(
         width: 3.4rem;
         height: 3.4rem;
         border-radius: 18px;
-        background: rgba(255,255,255,0.08);
+        object-fit: contain;
+        background: rgba(255,255,255,0.92);
         border: 1px solid rgba(255,255,255,0.12);
-        padding: 0.3rem;
+        padding: 0.36rem;
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
       }
       .sidebar-kicker {
@@ -1280,7 +1289,9 @@ st.markdown(
         letter-spacing: 0;
       }
       .brand-logo {
-        height: 2.65rem;
+        height: 2.55rem;
+        max-width: 13.5rem;
+        padding: 0.26rem 0.62rem;
       }
       .topbar-pill {
         border-radius: 10px;
@@ -1450,8 +1461,8 @@ st.markdown(
     <div class="topbar">
       <div class="topbar-title">
         <div class="brand-lockup">
-          <img class="brand-logo" src="__PATHPILOT_LOGO__" alt="Velora logo" />
-          <span>Velora Control Center</span>
+          <img class="brand-logo" src="__VELORA_WORDMARK__" alt="Velora logo" />
+          <span>Control Center</span>
         </div>
       </div>
       <div class="topbar-nav">
@@ -1478,7 +1489,7 @@ st.markdown(
         </div>
       </div>
     </div>
-    """.replace("__PATHPILOT_LOGO__", LOGO_URI),
+    """.replace("__VELORA_WORDMARK__", LOGO_URI),
     unsafe_allow_html=True,
 )
 
@@ -1584,7 +1595,7 @@ def render_sidebar_brand() -> None:
         f"""
         <div class="sidebar-brand-card">
           <div class="sidebar-brand-top">
-            <img class="sidebar-brand-logo" src="{LOGO_URI}" alt="Velora logo" />
+            <img class="sidebar-brand-logo" src="{BADGE_URI}" alt="Velora badge" />
             <div>
               <p class="sidebar-kicker">Urban Cycling Studio</p>
               <p class="sidebar-wordmark">Velora</p>
