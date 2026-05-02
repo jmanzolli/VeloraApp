@@ -40,10 +40,8 @@ def load_asset_data_uri(path: Path) -> str:
     return f"data:{mime_type or 'application/octet-stream'};base64,{encoded}"
 
 
-LOGO_PATH = ASSETS_DIR / "velora_wordmark.png"
 BADGE_PATH = ASSETS_DIR / "velora_badge.png"
 PAGE_ICON_PATH = BADGE_PATH
-LOGO_URI = load_asset_data_uri(LOGO_PATH)
 BADGE_URI = load_asset_data_uri(BADGE_PATH)
 
 DEFAULT_MODE_SHIFT_RATE = 0.15

@@ -1,77 +1,36 @@
 # Velora
 
-Velora is a web-based planning platform for bike-share and cycling-infrastructure decisions. It helps planners upload station demand and street-network data, run a multi-objective optimizer, compare planning scenarios, and package recommendations for stakeholder review.
+Velora is a Streamlit planning platform for bike-share and cycling-infrastructure decisions. It helps users upload station demand and street-network data, run a multi-objective optimizer, compare scenarios, inspect a decision map, and export stakeholder-ready outputs.
 
-The repository is now organized as a software product first. The academic manuscript is retained in `Paper/`, but the main project surface is the Streamlit planning platform.
+This repository is intentionally platform-only. Paper assets, exploratory notebooks, case-study figures, and local data exports have been removed from the production repo.
 
-![Velora control center](docs/figures/velora_control_center.png)
+## Product Capabilities
 
-## What Velora Does
-
-Velora turns station and street-network files into a scenario-comparison workspace:
-
-- Generates candidate station alternatives around uploaded station locations.
-- Builds a graph from the uploaded street network and LTS values.
-- Runs an NSGA-II optimization over station selection and corridor upgrades.
-- Extracts representative scenarios: `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
-- Displays scenario results through a decision map, KPI snapshot, Pareto explorer, and comparison workspace.
-- Estimates mode shift and emissions reduction potential from configurable assumptions.
-- Saves runs and stakeholder scenarios for later review.
-- Exports selected stations, links, and decision reports.
-- Includes a pre-optimized demo scenario so visitors can explore the interface without uploading files.
-
-## Screenshots
-
-### Interactive Decision Map
-
-![Velora decision map](docs/figures/velora_decision_map.png)
-
-### Trade-Off Explorer
-
-![Velora trade-off explorer](docs/figures/velora_tradeoff_explorer.png)
-
-## Architecture
-
-Velora deploys as a single Streamlit app. The FastAPI backend is kept for optional API/local-service workflows, but the hosted app runs optimization directly inside `streamlit_app.py`.
-
-```text
-Streamlit app
-  streamlit_app.py
-        |
-        | uploads files, runs optimization, stores payloads
-        v
-Optimization + persistence layer
-  ui/optimizer.py
-  ui/storage.py
-  app_data/runs/<run_id>/
-```
+- Upload station demand files and street-network files.
+- Generate candidate station alternatives and corridor upgrade options.
+- Run an NSGA-II multi-objective optimization.
+- Review representative scenarios: `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
+- Compare scenarios using demand, cost, LTS, mode-shift, and emissions indicators.
+- Explore selected stations and corridor upgrades on an interactive map.
+- Load a built-in demo scenario without uploading files.
+- Export selected stations, selected links, and a generated decision report.
 
 ## Repository Layout
 
 ```text
 .
-├── streamlit_app.py              # Main Streamlit product UI
-├── backend_api.py                # Optional FastAPI job API for local/API workflows
+├── streamlit_app.py              # Streamlit application entry point
 ├── ui/
-│   ├── optimizer.py              # Data validation, graph building, NSGA-II, maps
-│   ├── storage.py                # Saved run and scenario snapshot persistence
-│   └── assets/                   # Velora logo assets and demo scenario payload
-├── scripts/
-│   ├── bixi_case_study_graphs.py # Case-study figure generation
-│   └── notebooks/                # Python conversions of legacy notebooks
-├── docs/
-│   └── figures/                  # Product README screenshots
-├── figures/
-│   └── case_study/               # Case-study visual outputs
-├── app_data/
-│   └── runs/                     # Local saved optimization runs
-├── Paper/                        # Manuscript and paper-only assets
-├── verification_stations.csv     # Tiny local verification station dataset
-├── verification_network.geojson  # Tiny local verification network
-├── requirements.txt              # Streamlit Cloud/runtime dependencies
-├── requirements-ui.txt           # Legacy dependency alias for local workflows
-├── runtime.txt                   # Python runtime for Streamlit Cloud
-└── UI_README.md                  # Short UI-specific notes
+│   ├── optimizer.py              # Data loading, graph construction, NSGA-II, map generation
+│   ├── storage.py                # Local saved-run and scenario-snapshot persistence
+│   └── assets/
+│       ├── velora_badge.png      # App icon and brand mark
+│       └── velora_demo_run.json  # Pre-optimized demo scenario
+├── .streamlit/config.toml        # Streamlit theme
+├── requirements.txt              # Runtime dependencies
+├── runtime.txt                   # Streamlit Cloud Python runtime
+├── LICENSE
+└── README.md
 ```
 
 ## Quick Start
@@ -89,7 +48,7 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Start the app:
+Run the app:
 
 ```bash
 streamlit run streamlit_app.py --server.port 8501
@@ -97,11 +56,13 @@ streamlit run streamlit_app.py --server.port 8501
 
 Open:
 
-- App: `http://127.0.0.1:8501`
+```text
+http://127.0.0.1:8501
+```
 
-To preview the interface without uploading data, click **Load demo scenario** in the sidebar.
+To preview the product without uploading data, click **Load demo scenario** in the sidebar.
 
-## Input Data Contract
+## Input Data
 
 ### Station File
 
@@ -151,141 +112,42 @@ Optional field:
 
 If `length` is missing, Velora computes segment length from geometry.
 
-## Main User Workflow
+## Workflow
 
-1. Upload station and network files.
-2. Configure study area, cost, impact, network, and optimization assumptions.
-3. Run optimization from the sidebar.
-4. Inspect the decision map and five headline planning metrics.
-5. Compare the active scenario against a baseline.
-6. Save stakeholder-facing scenario snapshots with notes.
-7. Export selected stations, selected links, or a generated decision report.
+1. Upload station and network files, or load the demo scenario.
+2. Configure study area, costs, impact assumptions, network rules, and optimizer settings.
+3. Run the optimization.
+4. Compare scenarios in the planning workspace.
+5. Inspect map, KPI, Pareto, scenario-library, and comparison sections.
+6. Export CSV assets or generate a decision report.
 
-## Scenario Comparison
+## Deployment
 
-Velora is designed around scenario review, not just one optimization result. The current workspace supports:
-
-- active scenario selection
-- baseline scenario selection
-- stakeholder scenario snapshots
-- scenario notes
-- demand, cost, LTS, mode-shift, and emissions comparisons
-- map filtering by LTS and route length
-- lightweight performance mode for larger networks
-
-## Impact Assumptions
-
-Velora estimates mode shift and emissions reduction from configurable sidebar assumptions:
-
-```text
-Mode shift potential = demand coverage * mode shift capture rate
-
-Emissions reduction = shifted trips
-                    * average shifted trip distance
-                    * car emissions factor
-```
-
-These are planning estimates, not a full travel-demand model. They are included to make scenario trade-offs more legible for stakeholders.
-
-## Backend API
-
-### `GET /health`
-
-Returns:
-
-```json
-{"status":"ok"}
-```
-
-### `POST /optimize`
-
-Starts an asynchronous optimization job from uploaded station and network files plus configuration values.
-
-Returns:
-
-```json
-{"job_id":"20260502-010636","status":"queued"}
-```
-
-### `GET /jobs/{job_id}`
-
-Returns job progress and, once complete, the run payload.
-
-### `GET /runs`
-
-Lists saved runs.
-
-### `GET /runs/{run_id}`
-
-Returns a full saved run payload.
-
-## Saved Data
-
-Saved runs are stored locally under:
-
-```text
-app_data/runs/<run_id>/
-```
-
-Each run contains:
-
-- `summary.json`
-- `pareto.json`
-- `pareto_rows.csv`
-- `map_*.json`
-- `stations_*.csv`
-- `links_*.csv`
-- optional `scenario_snapshots.json`
-
-For deployment, treat `app_data/runs/` as local application state. In a hosted setup, this should move to persistent object storage or a database.
-
-## Legacy Notebook Conversions
-
-The old exploratory notebooks have been converted into Python scripts under:
-
-```text
-scripts/notebooks/
-```
-
-These files preserve the notebook cells as script sections for reference and migration. The production app logic lives in `streamlit_app.py`, `backend_api.py`, and `ui/`.
-
-## Development Notes
-
-Recommended checks:
-
-```bash
-python -m py_compile streamlit_app.py backend_api.py ui/optimizer.py ui/storage.py
-python -m py_compile scripts/notebooks/*.py
-```
-
-The app is intentionally organized into:
-
-- Streamlit for the planning interface and hosted optimization flow
-- `ui/optimizer.py` for reusable optimization logic
-- `ui/storage.py` for saved runs and scenario snapshots
-- optional FastAPI endpoints in `backend_api.py` for API-style local workflows
-
-## Deployment Notes
-
-Recommended free deployment: Streamlit Community Cloud.
+Velora is ready for Streamlit Community Cloud.
 
 1. Push this repository to GitHub.
-2. Open Streamlit Community Cloud and choose **New app**.
-3. Select the repository, branch, and `streamlit_app.py` as the main file.
-4. Deploy. Streamlit will use `requirements.txt` and `runtime.txt`.
+2. Open Streamlit Community Cloud.
+3. Create a new app from the repository.
+4. Use `streamlit_app.py` as the main file.
 
-Notes for the free tier:
+Streamlit Cloud will use:
 
-- Saved runs are stored in the app filesystem and should be treated as temporary demo data.
-- Very large uploads or long optimizations may exceed free-tier memory/time expectations.
-- Keep default optimization settings modest for stakeholder demos.
+```text
+requirements.txt
+runtime.txt
+.streamlit/config.toml
+```
 
-For production use, add:
+## Validation
 
-- persistent storage for `app_data/runs`
-- authentication if multiple users or private datasets are involved
-- input-size limits and job timeout policies
+Recommended checks before release:
 
-## Paper Folder
+```bash
+python -m py_compile streamlit_app.py ui/optimizer.py ui/storage.py
+```
 
-`Paper/` is retained for the manuscript, references, and paper-specific figures. It is not required to run Velora as a platform.
+## Release Status
+
+Current release target: `v0.1.0-beta`.
+
+This beta is suitable for demos, stakeholder walkthroughs, and early product feedback. For production use, add persistent cloud storage for saved runs, authentication, upload limits, and job timeout controls.
