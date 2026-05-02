@@ -32,6 +32,7 @@
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage{comment}
+\usepackage{setspace}
 
 % Custom Column Types
 \newcolumntype{F}[1]{>{\raggedright\arraybackslash\hspace{0pt}}p{#1}}
@@ -39,6 +40,7 @@
 
 % -------------------- 4. Hyperlinks (Load Last) --------------------
 \usepackage[colorlinks=true, urlcolor=blue, linkcolor=red, citecolor=green]{hyperref}
+\captionsetup[figure]{name=Fig.}
 
 % -------------------- Journal Metadata --------------------
 \journal{Transportation Research Part D: Transport and Environment} 
@@ -72,29 +74,30 @@
     \cortext[cor1]{Corresponding author}
     
     % Affiliation Address
-    \address[mcgill]{Department of Civil Engineering, McGill University, Montreal, QC, Canada}
-    \address[inescc]{INESC Coimbra, University of Coimbra, Coimbra, Portugal}
+    \address[mcgill]{Department of Civil Engineering, McGill University, 817 Sherbrooke Street West, Montreal, QC H3A 0C3, Canada}
+    \address[inescc]{INESC Coimbra, University of Coimbra, Rua Silvio Lima, Polo II, 3030-290 Coimbra, Portugal}
 
 % -------------------- Abstract --------------------
 \begin{abstract}
 
-This paper presents \textit{Velora} (Visualization and Evaluation of Low-stress Optimization for Bicycle Resource Allocation), a decision-support platform for integrated planning of bike-share systems and cycling infrastructure. Velora operationalizes a multi-objective optimization workflow that jointly determines station locations, bikeway upgrades, and station capacity while balancing three competing planning objectives: maximizing demand coverage, minimizing cyclist exposure to traffic stress, and controlling procurement costs. To align infrastructure design with transport-environment appraisal, the platform also formalizes modal-shift and avoided-emissions indicators that estimate potential vehicle-kilometres and CO$_2$ reductions under transparent substitution assumptions. The platform links data ingestion, candidate generation, level-of-traffic-stress mapping, NSGA-II optimization, scenario storage, interactive interpretation, and automatic report generation into a reproducible workflow for planners and policy analysts. Applied to Montreal using origin-destination demand from BIXI trip records and GIS-derived level-of-traffic-stress classification, Velora generates Pareto-efficient scenarios that can be compared through maps, metrics, emissions-potential indicators, and policy-oriented summaries. Results demonstrate that substantial demand (4.6 million trips annually) can be served through selective investment in 93 stations and 72 links at CAD\$ 9.42 million, compared with demand-maximizing scenarios that require nearly five times as much. Under an illustrative assumption that 5\% of served bike-share trips replace car trips of 2.0~km, the balanced solution avoids approximately 461,300 vehicle-km and 115 tonnes of tailpipe CO$_2$ annually. These findings indicate that platform-based planning can help agencies move from static network evaluation toward transparent scenario testing, allowing limited infrastructure budgets to be allocated among coverage, comfort, cost, and climate-mitigation objectives in a defensible manner.
+This study presents Velora (Visualization and Evaluation of Low-stress Optimization for Bicycle Resource Allocation), a decision-support platform for integrated bike-share and cycling-infrastructure planning. Velora combines demand processing, level-of-traffic-stress assessment, multi-objective optimization, modal-shift indicators, and automated reporting. Applied to Montreal, the platform generates Pareto-efficient scenarios balancing demand coverage, cyclist comfort, and cost. A balanced scenario serves 4.6 million annual trips through 93 stations and 72 links at CAD\$ 9.42 million, avoiding the higher cost and stress exposure of demand-maximizing expansion. Under an illustrative assumption that 5\% of served bike-share trips replace 2.0-km car trips, this scenario avoids about 461,300 vehicle-km and 115 tonnes of tailpipe CO$_2$ annually. Platform-based planning can help agencies compare alternatives, communicate trade-offs, and allocate cycling investments across mobility, comfort, cost, and climate objectives.
 
 \end{abstract}
 
  % -------------------- Keywords --------------------
 \begin{keyword}
-    Bike-sharing systems \sep 
-    Multi-objective optimization \sep 
-    Decision-support platform \sep
-    Bicycle infrastructure planning \sep 
-    Level of Traffic Stress \sep 
-    Origin–destination demand \sep
+    Bike sharing \sep 
+    Optimization \sep 
+    Decision support \sep
+    Cycling infrastructure \sep 
+    Traffic stress \sep 
     Modal shift \sep
-    CO$_2$ emissions
+    Emissions
 \end{keyword}
 
 \end{frontmatter}
+
+\doublespacing
 
 % -------------------- Main Content --------------------
 % -------------------- Intro --------------------
@@ -119,7 +122,7 @@ Motivated by these gaps, this study develops \textit{Velora} (Visualization and 
 \item Assessing robustness through sensitivity analyses across budgetary and infrastructure scenarios.
 \end{itemize}
 
-The paper is organized as follows. Section~\ref{review} reviews literature on cycling accessibility and infrastructure planning. Section~\ref{method} presents the methodological approach, including data acquisition, platform architecture, and model formulation. Section~\ref{casestudy} describes the Montreal case study. Section~\ref{results} discusses the results, including Pareto-optimal outcomes and sensitivity analyses. Section~\ref{policy} presents policy-making directions stemming from the results of the optimization experiments and their implementation in Velora. Section~\ref{conclusion} concludes with key takeaways, limitations, and directions for future research.
+The paper is organized as follows. Section~\ref{review} reviews literature on cycling accessibility and infrastructure planning. Section~\ref{method} presents the materials and methods, including data processing, LTS classification, model formulation, solution algorithm, environmental KPIs, and platform implementation. Section~\ref{casestudy} describes the Montreal case study. Section~\ref{results} reports the optimization results, Pareto-optimal outcomes, and sensitivity analyses. Section~\ref{policy} discusses policy and planning implications. Section~\ref{conclusion} concludes with key results, limitations, and future research directions.
 
 % -------------------- Review --------------------
 
@@ -163,7 +166,7 @@ These gaps are particularly consequential in dense urban settings where trade-of
 % -------------------- Methodology --------------------
 
 
-\section{Methodology}\label{method}
+\section{Material and Methods}\label{method}
 
 In this section, we present the methodological framework implemented in Velora, organized around five components: (i) data processing, (ii) Level of Traffic Stress (LTS) classification, (iii) the optimization model, including the multi-objective mathematical formulation and the NSGA-II solution algorithm, (iv) environmental and modal-shift indicators, and (v) the Velora platform layer. Figure \ref{framework} details the main actions applied in our framework.
 
@@ -433,7 +436,7 @@ Here, $\Delta p_{s,m}$ is avoided passenger-kilometres by replaced mode, $\Delta
 
 \subsection{Velora Platform Description}\label{subsec:velora_platform}
 
-Velora translates the data-processing, LTS, optimization, and KPI workflow into a decision-support environment for planners, analysts, and policy stakeholders. Consistent with decision-support-system applications in cycling planning \citep{silvestriCyclabilityDSS2024}, the platform links a Streamlit front-end with a persistent analytical back-end. Users upload station-demand and LTS network layers, configure planning assumptions and NSGA-II parameters, run or reopen scenarios, compare Pareto-efficient alternatives through maps and metrics, export selected station and link outputs, and automatically generate city-ready reports. In the main manuscript, Velora is treated as the implementation layer that makes the method repeatable and communicable; Appendix~\ref{app:velora_platform} provides additional details on platform functioning, modules, user experience, screenshots, and implementation notes.
+Velora translates the data-processing, LTS, optimization, and KPI workflow into a decision-support environment for planners, analysts, and policy stakeholders. Consistent with decision-support-system applications in cycling planning \citep{silvestriCyclabilityDSS2024}, the platform links a Streamlit front-end with a persistent analytical back-end. Users upload station-demand and LTS network layers, configure planning assumptions and NSGA-II parameters, run or reopen scenarios, compare Pareto-efficient alternatives through maps and metrics, export selected station and link outputs, and automatically generate city-ready reports. Figure~\ref{fig:velora_platform_workflow} summarizes this platform workflow. In the main manuscript, Velora is treated as the implementation layer that makes the method repeatable and communicable; Appendix~\ref{app:velora_platform} provides additional details on platform functioning, modules, user experience, screenshots, and implementation notes.
 
 \begin{figure}[htbp]
   \centering
@@ -770,7 +773,7 @@ The results point to a different mechanism. Demand captured per station remains 
 
 % -------------------- Policy Implications --------------------
 
-\section{Policy and Planning Implications}
+\section{Discussion and Policy Implications}
 \label{policy}
 
 This section translates the optimization results into actionable insights for policy and planning. It synthesizes key findings and identifies how infrastructure decisions can be structured to balance demand coverage, comfort, and cost in practical implementation contexts. The discussion also considers how Velora can be used as a recurring decision-support platform, rather than as a single case-study model, for scenario testing and stakeholder communication.
@@ -829,30 +832,12 @@ Further, some limitations and directions for future work should be acknowledged.
 
 In conclusion, the main contribution of this study is to demonstrate that explicit, quantifiable trade-off analysis can be operationalized as a practical decision-support platform for disciplined infrastructure allocation and environmental policy appraisal. Rather than asking ``how much to build,'' planning becomes ``how to allocate strategically, under which assumptions, and with what mobility, comfort, cost, and emissions consequences.'' For cities with demand patterns similar to Montreal, Velora provides a practical basis for moving beyond \textit{ad hoc} expansion toward evidence-based network design that simultaneously balances coverage, comfort, cost, and climate-mitigation potential. Platform-based optimization makes these trade-offs transparent, reproducible, and defensible, supporting more sustainable and equitable infrastructure investment decisions.
 
-% =================== Statements ===================
-\section*{CRediT authorship contribution statement}
-\textbf{Conceptualization:} NA, JAM, JY, LMM. 
-\textbf{Methodology:} NA, JAM, JY, LMM. 
-\textbf{Data curation:} NA. 
-\textbf{Formal analysis:} NA, JAM. 
-\textbf{Software:} NA. 
-\textbf{Visualization:} NA. 
-\textbf{Writing -- original draft:} NA, JAM. 
-\textbf{Writing -- review \& editing:} NA, JAM, JY, LMM. 
-\textbf{Supervision:} JY, LMM. 
-\textbf{Funding acquisition:} LMM.
-
-
-\section*{Declaration of competing interest}
-The authors declare no competing interests.
-
-\section*{Acknowledgments}
-This work was supported by funding from Environment and Climate Change Canada (ECCC), the New Frontiers in Research Fund (NFRF, Exploration Grant), and the Fonds de recherche du Québec (FRQ, AUDACE Grant).
-
-
 \appendix
 \setcounter{figure}{0}
 \setcounter{table}{0}
+\renewcommand{\thefigure}{\thesection.\arabic{figure}}
+\renewcommand{\thetable}{\thesection.\arabic{table}}
+\renewcommand{\theequation}{\thesection.\arabic{equation}}
 
 \section{Velora Platform Supplementary Material}\label{app:velora_platform}
 
@@ -1071,6 +1056,31 @@ Figure~\ref{fig:Sen_pareto_2d_links} shows the evolution of the Pareto front as 
   \caption{Pairwise projections of the NSGA-II Pareto set showing sensitivity to the minimum number of links.}
   \label{fig:Sen_pareto_2d_links}
 \end{figure}
+
+% =================== Statements ===================
+\section*{CRediT authorship contribution statement}
+\textbf{Conceptualization:} NA, JAM, JY, LMM. 
+\textbf{Methodology:} NA, JAM, JY, LMM. 
+\textbf{Data curation:} NA. 
+\textbf{Formal analysis:} NA, JAM. 
+\textbf{Software:} NA. 
+\textbf{Visualization:} NA. 
+\textbf{Writing -- original draft:} NA, JAM. 
+\textbf{Writing -- review \& editing:} NA, JAM, JY, LMM. 
+\textbf{Supervision:} JY, LMM. 
+\textbf{Funding acquisition:} LMM.
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Funding}
+This work was supported by Environment and Climate Change Canada (ECCC), the New Frontiers in Research Fund (NFRF, Exploration Grant), and the Fonds de recherche du Québec (FRQ, AUDACE Grant). The funders had no role in the study design, data processing, analysis, interpretation of results, manuscript preparation, or decision to submit the article for publication.
+
+\section*{Data availability}
+The BIXI trip data used in this study are publicly available through BIXI Montreal open data at \url{https://bixi.com/en/open-data/}. The derived LTS network, optimization instances, and platform outputs contain processed geospatial layers and will be made available by the corresponding author upon reasonable request, subject to data-use and licensing constraints.
+
+\section*{Acknowledgments}
+The authors thank the data providers and municipal open-data programs that made the empirical cycling and geospatial inputs available for this study.
 
 % References are now handled by the elsarticle class
 % The bibstyle is changed to elsarticle-num

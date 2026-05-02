@@ -191,6 +191,17 @@ cython_debug/
 .Trashes
 
 # =========================
+# Velora local runtime state
+# =========================
+app_data/runs/
+cache/
+
+# Large/generated local study files kept outside normal app development.
+best_nsga_selected_links.csv
+best_nsga_selected_stations.csv
+busiest_40.csv
+
+# =========================
 # LaTeX auxiliary files
 # =========================
 *.aux

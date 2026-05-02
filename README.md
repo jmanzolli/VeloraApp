@@ -1,124 +1,116 @@
 # Velora
 
-Velora is a web-based decision-support platform for bike-share and cycling-infrastructure planning. It combines a Streamlit front end, a FastAPI backend, and a multi-objective optimization pipeline to help users evaluate trade-offs between:
+Velora is a web-based planning platform for bike-share and cycling-infrastructure decisions. It helps planners upload station demand and street-network data, run a multi-objective optimizer, compare planning scenarios, and package recommendations for stakeholder review.
 
-- demand coverage
-- network stress / LTS
-- intervention cost
-- station and corridor selection
+The repository is now organized as a software product first. The academic manuscript is retained in `Paper/`, but the main project surface is the Streamlit + FastAPI platform.
 
-The current application is map-centric: users upload a station dataset and a street-network file, run the optimizer, and explore representative solutions such as `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
+![Velora control center](docs/figures/velora_control_center.png)
 
-## What The Platform Does
+## What Velora Does
 
-Velora turns a station table and a cycling-network file into an interactive planning workflow:
+Velora turns station and street-network files into a scenario-comparison workspace:
 
-1. Load station demand data and a network with LTS values
-2. Generate candidate station locations around existing stations
-3. Build a graph representation of the uploaded network
-4. Run an NSGA-II search over station and link decisions
-5. Extract representative solutions from the Pareto frontier
-6. Visualize them through:
-   - KPIs
-   - a trade-off explorer
-   - an interactive map
-   - saved runs and downloadable outputs
+- Generates candidate station alternatives around uploaded station locations.
+- Builds a graph from the uploaded street network and LTS values.
+- Runs an NSGA-II optimization over station selection and corridor upgrades.
+- Extracts representative scenarios: `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
+- Displays scenario results through a decision map, KPI snapshot, Pareto explorer, and comparison workspace.
+- Estimates mode shift and emissions reduction potential from configurable assumptions.
+- Saves runs and stakeholder scenarios for later review.
+- Exports selected stations, links, and decision reports.
 
-## Repository Structure
+## Screenshots
 
-- [streamlit_app.py](/Users/natomanzolli/Documents/GitHub/BIXIdataset/streamlit_app.py): Streamlit UI and interaction logic
-- [backend_api.py](/Users/natomanzolli/Documents/GitHub/BIXIdataset/backend_api.py): FastAPI backend for optimization jobs, run storage, and saved-run retrieval
-- [ui/optimizer.py](/Users/natomanzolli/Documents/GitHub/BIXIdataset/ui/optimizer.py): optimization pipeline, graph building, map generation, and representative-solution extraction
-- [ui/storage.py](/Users/natomanzolli/Documents/GitHub/BIXIdataset/ui/storage.py): run persistence utilities
-- [requirements-ui.txt](/Users/natomanzolli/Documents/GitHub/BIXIdataset/requirements-ui.txt): Python dependencies for the app
-- [UI_README.md](/Users/natomanzolli/Documents/GitHub/BIXIdataset/UI_README.md): shorter UI-specific notes
-- [app_data/](/Users/natomanzolli/Documents/GitHub/BIXIdataset/app_data): persisted optimization runs
-- [verification_stations.csv](/Users/natomanzolli/Documents/GitHub/BIXIdataset/verification_stations.csv): tiny verification dataset
-- [verification_network.geojson](/Users/natomanzolli/Documents/GitHub/BIXIdataset/verification_network.geojson): tiny verification network
+### Interactive Decision Map
+
+![Velora decision map](docs/figures/velora_decision_map.png)
+
+### Trade-Off Explorer
+
+![Velora trade-off explorer](docs/figures/velora_tradeoff_explorer.png)
 
 ## Architecture
 
-Velora currently runs as two Python services:
-
-- Front end: Streamlit
-- Backend: FastAPI
-
-High-level flow:
+Velora runs as two local Python services:
 
 ```text
-User uploads files in Streamlit
-    ->
-Streamlit posts files + config to FastAPI /optimize
-    ->
-FastAPI runs optimization asynchronously
-    ->
-FastAPI stores result payload under app_data/runs/<run_id>
-    ->
-Streamlit polls job status and renders the completed run
-    ->
-User can reopen saved runs without recomputing
+Streamlit frontend
+  streamlit_app.py
+        |
+        | uploads files, starts jobs, polls status
+        v
+FastAPI backend
+  backend_api.py
+        |
+        | runs optimization and stores payloads
+        v
+Optimization + persistence layer
+  ui/optimizer.py
+  ui/storage.py
+  app_data/runs/<run_id>/
 ```
 
-## Core Technologies
+## Repository Layout
 
-- Streamlit
-- FastAPI
-- Uvicorn
-- Pandas
-- NumPy
-- GeoPandas
-- Shapely
-- NetworkX
-- DEAP
-- Plotly
-- Pyogrio
-- OpenPyXL
+```text
+.
+├── streamlit_app.py              # Main Streamlit product UI
+├── backend_api.py                # FastAPI job API and saved-run endpoints
+├── ui/
+│   ├── optimizer.py              # Data validation, graph building, NSGA-II, maps
+│   ├── storage.py                # Saved run and scenario snapshot persistence
+│   └── assets/                   # Velora logo assets
+├── scripts/
+│   ├── bixi_case_study_graphs.py # Case-study figure generation
+│   └── notebooks/                # Python conversions of legacy notebooks
+├── docs/
+│   └── figures/                  # Product README screenshots
+├── figures/
+│   └── case_study/               # Case-study visual outputs
+├── app_data/
+│   └── runs/                     # Local saved optimization runs
+├── Paper/                        # Manuscript and paper-only assets
+├── verification_stations.csv     # Tiny local verification station dataset
+├── verification_network.geojson  # Tiny local verification network
+├── requirements-ui.txt           # Runtime dependencies
+└── UI_README.md                  # Short UI-specific notes
+```
 
-## Installation
+## Quick Start
 
-### 1. Create a virtual environment
+Create and activate a virtual environment:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 2. Install dependencies
+Install dependencies:
 
 ```bash
 pip install -r requirements-ui.txt
 ```
 
-## Running Locally
-
-Velora needs both the backend and the Streamlit app running.
-
-### Terminal 1: Start the backend
+Start the backend:
 
 ```bash
 uvicorn backend_api:app --host 127.0.0.1 --port 8000
 ```
 
-### Terminal 2: Start the Streamlit app
+Start the frontend in a second terminal:
 
 ```bash
 streamlit run streamlit_app.py --server.port 8501
 ```
 
-### Open the app
+Open:
 
 - Frontend: `http://127.0.0.1:8501`
 - Backend health check: `http://127.0.0.1:8000/health`
 
-The default backend URL shown in the Streamlit sidebar is:
+## Input Data Contract
 
-```text
-http://127.0.0.1:8000
-```
-
-## Input Data Requirements
-
-### Station file
+### Station File
 
 Accepted formats:
 
@@ -126,18 +118,18 @@ Accepted formats:
 - `.xlsx`
 - `.xls`
 
-Required columns:
+Required fields:
 
 - `Station_Name`
 - `Latitude`
 - `Longitude`
 - `Trips`
 
-Optional columns:
+Optional field:
 
 - `estimated_docks`
 
-Supported aliases are normalized by the optimizer, including:
+Supported aliases include:
 
 - `station`, `name`, `station_name` -> `Station_Name`
 - `lat`, `latitude` -> `Latitude`
@@ -145,11 +137,9 @@ Supported aliases are normalized by the optimizer, including:
 - `trips`, `total_trips`, `demand` -> `Trips`
 - `docks`, `estimated_docks` -> `estimated_docks`
 
-If `estimated_docks` is missing, Velora derives a fallback estimate from demand.
+### Network File
 
-### Network file
-
-Accepted vector formats:
+Accepted formats:
 
 - `.gpkg`
 - `.geojson`
@@ -157,93 +147,56 @@ Accepted vector formats:
 - `.shp`
 - `.parquet`
 
-Required columns:
+Required fields:
 
 - `geometry`
 - `lts`
 
-Optional columns:
+Optional field:
 
 - `length`
 
-If `length` is missing, Velora computes it from geometry. The platform expects line geometries representing street or path segments.
+If `length` is missing, Velora computes segment length from geometry.
 
-## Optimization Workflow
+## Main User Workflow
 
-The optimization logic lives in [ui/optimizer.py](/Users/natomanzolli/Documents/GitHub/BIXIdataset/ui/optimizer.py).
+1. Upload station and network files.
+2. Configure study area, cost, impact, network, and optimization assumptions.
+3. Run optimization from the sidebar.
+4. Inspect the decision map and five headline planning metrics.
+5. Compare the active scenario against a baseline.
+6. Save stakeholder-facing scenario snapshots with notes.
+7. Export selected stations, selected links, or a generated decision report.
 
-Main stages:
+## Scenario Comparison
 
-1. Validate and normalize uploaded station data
-2. Read and validate the uploaded network
-3. Build a station GeoDataFrame
-4. Generate candidate station points around each station
-5. Clip and prepare the network
-6. Build a graph from the network geometry
-7. Build candidate links between relevant nodes
-8. Run NSGA-II
-9. Score the final population
-10. Extract representative solutions
-11. Generate Plotly figures and saved payloads
+Velora is designed around scenario review, not just one optimization result. The current workspace supports:
 
-## Representative Solutions
+- active scenario selection
+- baseline scenario selection
+- stakeholder scenario snapshots
+- scenario notes
+- demand, cost, LTS, mode-shift, and emissions comparisons
+- map filtering by LTS and route length
+- lightweight performance mode for larger networks
 
-Each completed run stores four main representative scenarios:
+## Impact Assumptions
 
-- `Balanced`
-- `Best Demand`
-- `Best Stress`
-- `Best Cost`
-
-Each scenario includes:
-
-- metrics
-- map figure JSON
-- selected station records
-- selected link records
-- available LTS levels
-
-## User Interface Features
-
-The current Streamlit interface includes:
-
-- branded left sidebar with upload and model controls
-- scenario selector
-- comparison mode
-- interactive decision map
-- route-length and LTS filters
-- demand-bubble overlay
-- decision snapshot KPIs
-- trade-off explorer
-- scenario comparison table
-- downloadable selected stations and links
-- on-demand decision report generation
-- saved-run reopening and deletion
-
-## Saved Runs
-
-Saved runs are stored under:
+Velora estimates mode shift and emissions reduction from configurable sidebar assumptions:
 
 ```text
-app_data/runs/<run_id>/
+Mode shift potential = demand coverage * mode shift capture rate
+
+Emissions reduction = shifted trips
+                    * average shifted trip distance
+                    * car emissions factor
 ```
 
-A run directory typically contains:
-
-- `summary.json`
-- `pareto.json`
-- `pareto_rows.csv`
-- `map_*.json`
-- `stations_*.csv`
-- `links_*.csv`
-
-Saved runs can be reopened directly from the Streamlit sidebar without rerunning optimization.
+These are planning estimates, not a full travel-demand model. They are included to make scenario trade-offs more legible for stakeholders.
 
 ## Backend API
 
 ### `GET /health`
-
-Simple health check.
 
 Returns:
 
@@ -251,143 +204,90 @@ Returns:
 {"status":"ok"}
 ```
 
+### `POST /optimize`
+
+Starts an asynchronous optimization job from uploaded station and network files plus configuration values.
+
+Returns:
+
+```json
+{"job_id":"20260502-010636","status":"queued"}
+```
+
+### `GET /jobs/{job_id}`
+
+Returns job progress and, once complete, the run payload.
+
 ### `GET /runs`
 
-Returns saved run summaries.
+Lists saved runs.
 
 ### `GET /runs/{run_id}`
 
 Returns a full saved run payload.
 
-### `GET /jobs/{job_id}`
+## Saved Data
 
-Returns live job status:
+Saved runs are stored locally under:
 
-- `queued`
-- `running`
-- `completed`
-- `failed`
-
-### `POST /optimize`
-
-Starts an optimization job.
-
-Expected multipart fields:
-
-- `station_file`
-- `network_file`
-- `candidate_points_per_station`
-- `station_buffer_meters`
-- `area_of_interest_buffer_meters`
-- `station_minimum`
-- `link_minimum`
-- `population_size`
-- `generations`
-- `seed`
-- `dock_unit_cost`
-- `station_fixed_cost`
-- `link_cost_lts1_per_km`
-- `link_cost_lts2_per_km`
-- `link_cost_lts3_per_km`
-- `link_cost_lts4_per_km`
-
-## Verification Dataset
-
-This repo includes a tiny verification case for quick sanity checks:
-
-- [verification_stations.csv](/Users/natomanzolli/Documents/GitHub/BIXIdataset/verification_stations.csv)
-- [verification_network.geojson](/Users/natomanzolli/Documents/GitHub/BIXIdataset/verification_network.geojson)
-
-These are useful for:
-
-- confirming the backend boots correctly
-- validating the job lifecycle
-- testing saved-run serialization
-- checking UI behavior quickly without a large dataset
-
-## Deployment Options
-
-Velora is easiest to deploy as two services:
-
-### Option A
-
-- Backend on Render or Railway
-- Frontend on Streamlit Community Cloud
-
-### Option B
-
-- Backend on Render
-- Frontend on Render
-
-### Backend start command
-
-```bash
-uvicorn backend_api:app --host 0.0.0.0 --port $PORT
+```text
+app_data/runs/<run_id>/
 ```
 
-### Streamlit start command
+Each run contains:
 
-```bash
-streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT
+- `summary.json`
+- `pareto.json`
+- `pareto_rows.csv`
+- `map_*.json`
+- `stations_*.csv`
+- `links_*.csv`
+- optional `scenario_snapshots.json`
+
+For deployment, treat `app_data/runs/` as local application state. In a hosted setup, this should move to persistent object storage or a database.
+
+## Legacy Notebook Conversions
+
+The old exploratory notebooks have been converted into Python scripts under:
+
+```text
+scripts/notebooks/
 ```
 
-If deploying online, the frontend must point to the public backend URL rather than `127.0.0.1`.
-
-## Performance Notes
-
-Runtime depends heavily on:
-
-- number of uploaded stations
-- network size after clipping
-- candidate points per station
-- population size
-- number of generations
-- number of candidate links created
-
-The app is much faster on the small verification dataset than on a full city network.
-
-## Troubleshooting
-
-### The frontend loads but optimization fails
-
-Check:
-
-- backend is running
-- backend URL in the sidebar is correct
-- both files are uploaded
-- the network file includes an `lts` field
-
-### The map feels slow
-
-Large networks and large Plotly payloads can make rerenders slower. Reduce:
-
-- population size
-- generations
-- network extent
-- candidate density
-
-### Saved runs do not appear
-
-Check that:
-
-- optimization completed successfully
-- `app_data/runs/` is writable
-- the backend process has permission to write files
-
-### Geo errors or missing geometry
-
-Make sure the uploaded network:
-
-- contains valid line geometries
-- has a usable CRS or can be interpreted by GeoPandas
-- includes the required `lts` field
+These files preserve the notebook cells as script sections for reference and migration. The production app logic lives in `streamlit_app.py`, `backend_api.py`, and `ui/`.
 
 ## Development Notes
 
-- The current app is intentionally still contained in a single Streamlit file for speed of iteration.
-- The UI has been cleaned up with helper functions for repeated layout patterns.
-- The backend serializes Plotly and NumPy-heavy payloads for saved runs and job responses.
+Recommended checks:
 
-## License
+```bash
+python -m py_compile streamlit_app.py backend_api.py ui/optimizer.py ui/storage.py
+python -m py_compile scripts/notebooks/*.py
+```
 
-This repository includes a [LICENSE](/Users/natomanzolli/Documents/GitHub/BIXIdataset/LICENSE) file. Review it before redistribution or commercial deployment.
+The app is intentionally split into:
+
+- Streamlit for the planning interface
+- FastAPI for job orchestration
+- `ui/optimizer.py` for reusable optimization logic
+- `ui/storage.py` for saved runs and scenario snapshots
+
+## Deployment Notes
+
+For a simple hosted deployment:
+
+- Deploy `backend_api.py` with Uvicorn on Render, Railway, or another Python web service.
+- Deploy `streamlit_app.py` on Streamlit Community Cloud, Render, or another Streamlit-compatible host.
+- Set the frontend backend URL to the public backend service.
+
+For production use, add:
+
+- environment-based backend URL configuration
+- persistent storage for `app_data/runs`
+- authentication if multiple users or private datasets are involved
+- input-size limits and job timeout policies
+
+## Paper Folder
+
+`Paper/` is retained for the manuscript, references, and paper-specific figures. It is not required to run Velora as a platform.
+

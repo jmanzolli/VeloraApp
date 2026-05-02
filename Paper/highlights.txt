@@ -1,0 +1,7 @@
+Highlights
+
+* Velora links bike-share planning with low-stress network design.
+* NSGA-II reveals demand, comfort, and cost trade-offs.
+* Modal-shift KPIs estimate avoided VKT and tailpipe CO2.
+* A balanced Montreal scenario serves 4.6 million annual trips.
+* The platform supports maps, scenarios, exports, and city reports.
