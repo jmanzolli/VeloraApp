@@ -3,25 +3,29 @@ from __future__ import annotations
 import base64
 import html
 import json
-import time
 import mimetypes
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from ui.optimizer import UIConfig, create_pareto_figure, create_solution_map, run_pipeline
 from ui.storage import (
     delete_all_runs,
     delete_run,
     delete_scenario_snapshot,
+    figure_to_json,
+    list_runs,
     list_scenario_snapshots,
+    load_run,
+    new_run_id,
+    save_run_payload,
     save_scenario_snapshot,
 )
 
@@ -1782,7 +1786,6 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
 
 
 render_sidebar_brand()
-backend_url = st.sidebar.text_input("Backend URL", value="http://127.0.0.1:8000")
 
 render_sidebar_section_heading(
     "1. Data Files",
@@ -1952,105 +1955,146 @@ if run_button:
     st.session_state["station_preview_open"] = False
 
 
-def get_json(url: str) -> Any:
-    with urlopen(url) as response:
-        return json_loads_bytes(response.read())
-
-
-def json_loads_bytes(payload: bytes) -> Any:
-    import json
-
-    return json.loads(payload.decode("utf-8"))
-
-
 @st.cache_data(ttl=15, show_spinner=False)
-def fetch_runs(base_url: str) -> list[dict[str, Any]]:
+def fetch_runs() -> list[dict[str, Any]]:
     # Saved runs change infrequently, so a short cache keeps the sidebar responsive.
     try:
-        return get_json(f"{base_url}/runs")
+        return list_runs()
     except Exception:
         return []
 
 
 @st.cache_data(ttl=15, show_spinner=False)
-def fetch_run(base_url: str, run_id: str) -> dict[str, Any]:
-    # Cache reopened runs briefly to avoid repeated backend fetches while users compare scenarios.
-    return get_json(f"{base_url}/runs/{run_id}")
+def fetch_run(run_id: str) -> dict[str, Any]:
+    # Cache reopened runs briefly while users compare scenarios.
+    return load_run(run_id)
 
 
-def fetch_job(base_url: str, job_id: str) -> dict[str, Any]:
-    return get_json(f"{base_url}/jobs/{job_id}")
+def save_uploaded_temp_file(uploaded_file) -> str:
+    suffix = Path(uploaded_file.name or "").suffix
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+        handle.write(uploaded_file.getvalue())
+        return handle.name
 
 
-def post_optimize(base_url: str, station_file, network_file, form_data: dict[str, Any]) -> dict[str, Any]:
-    import uuid
-
-    boundary = f"----WebKitFormBoundary{uuid.uuid4().hex}"
-    body = bytearray()
-    for key, value in form_data.items():
-        body.extend(f"--{boundary}\r\n".encode())
-        body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode())
-        body.extend(f"{value}\r\n".encode())
-
-    uploads = [
-        ("station_file", station_file),
-        ("network_file", network_file),
-    ]
-    for field_name, uploaded in uploads:
-        body.extend(f"--{boundary}\r\n".encode())
-        body.extend(
-            (
-                f'Content-Disposition: form-data; name="{field_name}"; '
-                f'filename="{uploaded.name}"\r\n'
-            ).encode()
-        )
-        body.extend(b"Content-Type: application/octet-stream\r\n\r\n")
-        body.extend(uploaded.getvalue())
-        body.extend(b"\r\n")
-    body.extend(f"--{boundary}--\r\n".encode())
-
-    request = Request(
-        f"{base_url}/optimize",
-        data=bytes(body),
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST",
+def build_run_payload(artifacts, config: UIConfig, run_id: str) -> dict[str, Any]:
+    pareto_figure = create_pareto_figure(artifacts.pareto_df)
+    node_summary = (
+        artifacts.candidates_gdf.sort_values(["type", "Trips"], ascending=[True, False])
+        .groupby("graph_node", as_index=False)
+        .first()[["graph_node", "Station_Name", "Trips", "estimated_docks", "type"]]
+        .copy()
     )
-    try:
-        with urlopen(request, timeout=3600) as response:
-            return json_loads_bytes(response.read())
-    except HTTPError as exc:
-        detail = exc.reason
-        try:
-            payload = json_loads_bytes(exc.read())
-            if isinstance(payload, dict) and "detail" in payload:
-                detail = payload["detail"]
-        except Exception:
-            pass
-        raise RuntimeError(f"Backend optimization error: {detail}") from exc
+    node_summary["node_key"] = node_summary["graph_node"].map(repr)
+
+    link_lookup = artifacts.links_df.copy()
+    link_lookup["edge_key"] = link_lookup.apply(
+        lambda row: tuple(sorted((repr(row["from_node"]), repr(row["to_node"])))),
+        axis=1,
+    )
+
+    solutions: dict[str, Any] = {}
+    for solution_name, solution in artifacts.solutions.items():
+        map_figure = create_solution_map(solution, artifacts.graph, artifacts.candidates_gdf, artifacts.links_df)
+        selected_station_keys = {repr(node) for node in solution["selected_stations"]}
+        selected_station_rows = node_summary[node_summary["node_key"].isin(selected_station_keys)].copy()
+        selected_link_rows = []
+        for edge in solution["selected_links"]:
+            edge_key = tuple(sorted((repr(edge[0]), repr(edge[1]))))
+            matches = link_lookup[link_lookup["edge_key"] == edge_key]
+            if not matches.empty:
+                selected_link_rows.append(matches.iloc[0].to_dict())
+
+        lts_levels = sorted(
+            {
+                int(float(row["mean_lts"]) + 0.5)
+                for row in selected_link_rows
+                if pd.notna(row.get("mean_lts"))
+            }
+        )
+        solutions[solution_name] = {
+            "metrics": solution["metrics"],
+            "map_figure": figure_to_json(map_figure),
+            "available_lts_levels": lts_levels,
+            "selected_stations": [
+                {
+                    "node": repr(row["graph_node"]),
+                    "station_name": str(row["Station_Name"]),
+                    "trips": float(row["Trips"]),
+                    "estimated_docks": float(row["estimated_docks"]),
+                    "type": str(row["type"]),
+                }
+                for _, row in selected_station_rows.iterrows()
+            ],
+            "selected_links": [
+                {
+                    "from_node": repr(row["from_node"]),
+                    "to_node": repr(row["to_node"]),
+                    "from_station": str(row["from_station"]),
+                    "to_station": str(row["to_station"]),
+                    "total_length": float(row["total_length"]),
+                    "mean_lts": float(row["mean_lts"]),
+                }
+                for row in selected_link_rows
+            ],
+        }
+
+    return {
+        "run_id": run_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "config": config.__dict__,
+        "station_count": int(len(artifacts.stations_gdf)),
+        "candidate_count": int(len(artifacts.candidates_gdf)),
+        "link_pair_count": int(len(artifacts.links_df)),
+        "population_rows": int(len(artifacts.pareto_df)),
+        "pareto_rows": artifacts.pareto_df.drop(columns=["individual"], errors="ignore").to_dict(orient="records"),
+        "pareto_figure": figure_to_json(pareto_figure),
+        "solutions": solutions,
+    }
 
 
-def wait_for_job(base_url: str, job_id: str) -> dict[str, Any]:
-    # Poll the backend and surface progress while optimization runs asynchronously.
+def run_local_optimization(station_file, network_file, form_data: dict[str, Any]) -> dict[str, Any]:
+    # Streamlit Community Cloud runs a single app process, so optimization happens in-process.
+    config = UIConfig(
+        candidate_points_per_station=int(form_data["candidate_points_per_station"]),
+        station_buffer_meters=float(form_data["station_buffer_meters"]),
+        area_of_interest_buffer_meters=float(form_data["area_of_interest_buffer_meters"]),
+        station_minimum=int(form_data["station_minimum"]),
+        link_minimum=int(form_data["link_minimum"]),
+        population_size=int(form_data["population_size"]),
+        generations=int(form_data["generations"]),
+        seed=int(form_data["seed"]),
+        dock_unit_cost=float(form_data["dock_unit_cost"]),
+        station_fixed_cost=float(form_data["station_fixed_cost"]),
+        link_cost_lts1_per_km=float(form_data["link_cost_lts1_per_km"]),
+        link_cost_lts2_per_km=float(form_data["link_cost_lts2_per_km"]),
+        link_cost_lts3_per_km=float(form_data["link_cost_lts3_per_km"]),
+        link_cost_lts4_per_km=float(form_data["link_cost_lts4_per_km"]),
+        mode_shift_rate=float(form_data["mode_shift_rate"]),
+        average_trip_distance_km=float(form_data["average_trip_distance_km"]),
+        car_emission_factor_g_per_km=float(form_data["car_emission_factor_g_per_km"]),
+    )
+
     progress_bar = st.progress(0, text="Job queued")
     status_box = st.empty()
-    while True:
-        job = fetch_job(base_url, job_id)
-        message = job.get("message", "Working...")
-        progress = float(job.get("progress", 0.0))
+    run_id = new_run_id()
+    stations_path = save_uploaded_temp_file(station_file)
+    network_path = save_uploaded_temp_file(network_file)
+
+    def progress_callback(stage: str, message: str, progress: float) -> None:
         progress_bar.progress(min(max(progress, 0.0), 1.0), text=message)
-        status_box.info(
-            f"Status: {job.get('status', 'unknown')} | "
-            f"Step: {job.get('stage', 'n/a')} | "
-            f"Progress: {progress * 100:.0f}%"
-        )
-        if job.get("status") == "completed":
-            progress_bar.progress(1.0, text="Optimization complete")
-            status_box.success("Optimization finished successfully.")
-            return job["result"]
-        if job.get("status") == "failed":
-            progress_bar.progress(1.0, text="Optimization failed")
-            raise RuntimeError(f"Backend optimization error: {job.get('error', 'Unknown error')}")
-        time.sleep(1.5)
+        status_box.info(f"Step: {stage} | Progress: {progress * 100:.0f}%")
+
+    try:
+        artifacts = run_pipeline(stations_path, network_path, config, progress_callback=progress_callback)
+        run_payload = build_run_payload(artifacts, config, run_id)
+        save_run_payload(run_id, run_payload)
+        progress_bar.progress(1.0, text="Optimization complete")
+        status_box.success("Optimization finished successfully.")
+        return run_payload
+    finally:
+        Path(stations_path).unlink(missing_ok=True)
+        Path(network_path).unlink(missing_ok=True)
 
 
 def build_solution_summary_rows(run_payload: dict[str, Any]) -> pd.DataFrame:
@@ -3103,7 +3147,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
     close_panel()
 
 
-runs = fetch_runs(backend_url.rstrip("/"))
+runs = fetch_runs()
 selected_saved_run = None
 if runs:
     render_sidebar_section_heading(
@@ -3153,8 +3197,7 @@ if run_button:
 
     with st.spinner("Running optimization and generating visualizations..."):
         try:
-            job_response = post_optimize(
-                backend_url.rstrip("/"),
+            run_payload = run_local_optimization(
                 stations_upload,
                 network_upload,
                 {
@@ -3177,7 +3220,6 @@ if run_button:
                     "car_emission_factor_g_per_km": float(car_emission_factor_g_per_km),
                 },
             )
-            run_payload = wait_for_job(backend_url.rstrip("/"), job_response["job_id"])
         except Exception as exc:
             st.exception(exc)
             st.stop()
@@ -3186,6 +3228,6 @@ if run_button:
     render_run(run_payload)
 elif selected_saved_run:
     try:
-        render_run(fetch_run(backend_url.rstrip("/"), selected_saved_run))
+        render_run(fetch_run(selected_saved_run))
     except Exception as exc:
         st.exception(exc)

@@ -2,7 +2,7 @@
 
 Velora is a web-based planning platform for bike-share and cycling-infrastructure decisions. It helps planners upload station demand and street-network data, run a multi-objective optimizer, compare planning scenarios, and package recommendations for stakeholder review.
 
-The repository is now organized as a software product first. The academic manuscript is retained in `Paper/`, but the main project surface is the Streamlit + FastAPI platform.
+The repository is now organized as a software product first. The academic manuscript is retained in `Paper/`, but the main project surface is the Streamlit planning platform.
 
 ![Velora control center](docs/figures/velora_control_center.png)
 
@@ -31,18 +31,13 @@ Velora turns station and street-network files into a scenario-comparison workspa
 
 ## Architecture
 
-Velora runs as two local Python services:
+Velora deploys as a single Streamlit app. The FastAPI backend is kept for optional API/local-service workflows, but the hosted app runs optimization directly inside `streamlit_app.py`.
 
 ```text
-Streamlit frontend
+Streamlit app
   streamlit_app.py
         |
-        | uploads files, starts jobs, polls status
-        v
-FastAPI backend
-  backend_api.py
-        |
-        | runs optimization and stores payloads
+        | uploads files, runs optimization, stores payloads
         v
 Optimization + persistence layer
   ui/optimizer.py
@@ -55,7 +50,7 @@ Optimization + persistence layer
 ```text
 .
 ├── streamlit_app.py              # Main Streamlit product UI
-├── backend_api.py                # FastAPI job API and saved-run endpoints
+├── backend_api.py                # Optional FastAPI job API for local/API workflows
 ├── ui/
 │   ├── optimizer.py              # Data validation, graph building, NSGA-II, maps
 │   ├── storage.py                # Saved run and scenario snapshot persistence
@@ -72,7 +67,9 @@ Optimization + persistence layer
 ├── Paper/                        # Manuscript and paper-only assets
 ├── verification_stations.csv     # Tiny local verification station dataset
 ├── verification_network.geojson  # Tiny local verification network
-├── requirements-ui.txt           # Runtime dependencies
+├── requirements.txt              # Streamlit Cloud/runtime dependencies
+├── requirements-ui.txt           # Legacy dependency alias for local workflows
+├── runtime.txt                   # Python runtime for Streamlit Cloud
 └── UI_README.md                  # Short UI-specific notes
 ```
 
@@ -88,16 +85,10 @@ source .venv/bin/activate
 Install dependencies:
 
 ```bash
-pip install -r requirements-ui.txt
+pip install -r requirements.txt
 ```
 
-Start the backend:
-
-```bash
-uvicorn backend_api:app --host 127.0.0.1 --port 8000
-```
-
-Start the frontend in a second terminal:
+Start the app:
 
 ```bash
 streamlit run streamlit_app.py --server.port 8501
@@ -105,8 +96,7 @@ streamlit run streamlit_app.py --server.port 8501
 
 Open:
 
-- Frontend: `http://127.0.0.1:8501`
-- Backend health check: `http://127.0.0.1:8000/health`
+- App: `http://127.0.0.1:8501`
 
 ## Input Data Contract
 
@@ -265,24 +255,30 @@ python -m py_compile streamlit_app.py backend_api.py ui/optimizer.py ui/storage.
 python -m py_compile scripts/notebooks/*.py
 ```
 
-The app is intentionally split into:
+The app is intentionally organized into:
 
-- Streamlit for the planning interface
-- FastAPI for job orchestration
+- Streamlit for the planning interface and hosted optimization flow
 - `ui/optimizer.py` for reusable optimization logic
 - `ui/storage.py` for saved runs and scenario snapshots
+- optional FastAPI endpoints in `backend_api.py` for API-style local workflows
 
 ## Deployment Notes
 
-For a simple hosted deployment:
+Recommended free deployment: Streamlit Community Cloud.
 
-- Deploy `backend_api.py` with Uvicorn on Render, Railway, or another Python web service.
-- Deploy `streamlit_app.py` on Streamlit Community Cloud, Render, or another Streamlit-compatible host.
-- Set the frontend backend URL to the public backend service.
+1. Push this repository to GitHub.
+2. Open Streamlit Community Cloud and choose **New app**.
+3. Select the repository, branch, and `streamlit_app.py` as the main file.
+4. Deploy. Streamlit will use `requirements.txt` and `runtime.txt`.
+
+Notes for the free tier:
+
+- Saved runs are stored in the app filesystem and should be treated as temporary demo data.
+- Very large uploads or long optimizations may exceed free-tier memory/time expectations.
+- Keep default optimization settings modest for stakeholder demos.
 
 For production use, add:
 
-- environment-based backend URL configuration
 - persistent storage for `app_data/runs`
 - authentication if multiple users or private datasets are involved
 - input-size limits and job timeout policies
@@ -290,4 +286,3 @@ For production use, add:
 ## Paper Folder
 
 `Paper/` is retained for the manuscript, references, and paper-specific figures. It is not required to run Velora as a platform.
-

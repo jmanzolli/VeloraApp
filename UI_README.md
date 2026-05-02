@@ -12,22 +12,18 @@ The frontend is responsible for:
 
 - upload controls
 - optimization configuration
-- job submission and polling
+- in-process optimization with progress feedback
 - saved-run loading
 - scenario selection and comparison
 - decision map rendering
 - report generation
 - exports for selected stations and links
 
-## Backend Contract
+## Runtime Contract
 
-The UI expects the FastAPI backend to run at:
+The hosted UI runs as a single Streamlit app. It calls `ui.optimizer.run_pipeline()` directly and stores saved-run payloads through `ui.storage`.
 
-```text
-http://127.0.0.1:8000
-```
-
-The sidebar allows this URL to be changed at runtime.
+`backend_api.py` remains available when an API service is useful locally, but it is not required for the Streamlit Community Cloud deployment.
 
 ## Key UI Sections
 
@@ -41,14 +37,6 @@ The sidebar allows this URL to be changed at runtime.
 
 ## Local Run Commands
 
-Backend:
-
-```bash
-uvicorn backend_api:app --host 127.0.0.1 --port 8000
-```
-
-Frontend:
-
 ```bash
 streamlit run streamlit_app.py --server.port 8501
 ```
@@ -58,4 +46,3 @@ streamlit run streamlit_app.py --server.port 8501
 ```bash
 python -m py_compile streamlit_app.py backend_api.py ui/optimizer.py ui/storage.py
 ```
-
