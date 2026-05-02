@@ -459,13 +459,12 @@ st.markdown(
         gap: 1rem;
       }
       .brand-logo {
-        height: 3rem;
-        width: auto;
-        max-width: 15rem;
+        height: 2.35rem;
+        width: 2.35rem;
         object-fit: contain;
-        border-radius: 16px;
-        padding: 0.32rem 0.72rem;
-        background: rgba(255,255,255,0.94);
+        border-radius: 12px;
+        padding: 0.22rem;
+        background: rgba(255,255,255,0.10);
         box-shadow: inset 0 0 0 1px rgba(16,47,67,0.08), 0 10px 22px rgba(2,14,24,0.12);
       }
       .sidebar-brand-card {
@@ -671,7 +670,8 @@ st.markdown(
         border-radius: 999px;
         border: 1px solid rgba(255,255,255,0.18);
         background: rgba(255,255,255,0.14);
-        color: rgba(248,252,254,0.96);
+        color: #ffffff !important;
+        text-decoration: none !important;
         font-size: 0.88rem;
         font-weight: 600;
       }
@@ -680,6 +680,7 @@ st.markdown(
       .topbar-pill:active {
         background: rgba(255,255,255,0.18);
         border-color: rgba(255,255,255,0.24);
+        color: #ffffff !important;
       }
       .hero {
         padding: 1.15rem 1.35rem 1.25rem;
@@ -764,7 +765,7 @@ st.markdown(
         padding: 0.78rem 0.9rem;
         border-radius: 14px;
         border: 1px solid rgba(11,53,82,0.09);
-        background: rgba(255,255,255,0.82);
+        background: rgba(255,255,255,0.72);
         color: inherit;
         text-decoration: none !important;
         transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
@@ -772,8 +773,8 @@ st.markdown(
       .workspace-step:hover,
       .workspace-step:focus {
         transform: translateY(-1px);
-        border-color: rgba(67,184,163,0.36);
-        background: rgba(255,255,255,0.96);
+        border-color: rgba(11,53,82,0.16);
+        background: rgba(255,255,255,0.88);
       }
       .workspace-step strong {
         display: block;
@@ -790,6 +791,11 @@ st.markdown(
       .workspace-step--active {
         background: linear-gradient(180deg, rgba(232,247,241,0.98), rgba(255,255,255,0.98));
         border-color: rgba(67,184,163,0.34);
+      }
+      .workspace-step--active:hover,
+      .workspace-step--active:focus {
+        border-color: rgba(67,184,163,0.44);
+        background: linear-gradient(180deg, rgba(232,247,241,0.98), rgba(255,255,255,0.98));
       }
       .section-anchor {
         display: block;
@@ -1328,15 +1334,17 @@ st.markdown(
         letter-spacing: 0;
       }
       .brand-logo {
-        height: 2.55rem;
-        max-width: 13.5rem;
-        padding: 0.26rem 0.62rem;
+        height: 2.2rem;
+        width: 2.2rem;
+        max-width: none;
+        padding: 0.2rem;
       }
       .topbar-pill {
         border-radius: 10px;
         padding: 0.42rem 0.72rem;
         background: rgba(255,255,255,0.08);
         border-color: rgba(255,255,255,0.16);
+        color: #ffffff !important;
         font-size: 0.78rem;
       }
       .hero {
@@ -1391,15 +1399,22 @@ st.markdown(
       .workspace-step {
         border-radius: 10px;
         background: rgba(255,255,255,0.72);
+        border-color: rgba(16,47,67,0.09);
         box-shadow: none;
       }
       .workspace-step:hover,
       .workspace-step:focus {
-        background: rgba(255,255,255,0.96);
+        background: rgba(255,255,255,0.86);
+        border-color: rgba(16,47,67,0.15);
       }
       .workspace-step--active {
         background: linear-gradient(180deg, rgba(230,247,242,0.95), rgba(255,255,255,0.78));
         border-color: rgba(22,163,137,0.34);
+      }
+      .workspace-step--active:hover,
+      .workspace-step--active:focus {
+        background: linear-gradient(180deg, rgba(230,247,242,0.95), rgba(255,255,255,0.78));
+        border-color: rgba(22,163,137,0.44);
       }
       .scenario-card--accent {
         background: linear-gradient(180deg, rgba(230,247,242,0.92), rgba(255,255,255,0.82));
@@ -1518,16 +1533,16 @@ st.markdown(
           border-radius: 12px 12px 0 0;
         }
         .brand-lockup {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 0.35rem;
-          justify-items: start;
+          display: flex;
+          grid-template-columns: none;
+          gap: 0.65rem;
+          justify-items: initial;
         }
         .brand-logo {
-          height: auto;
-          width: min(13.8rem, 76vw);
+          height: 2.35rem;
+          width: 2.35rem;
           max-width: 100%;
-          padding: 0.34rem 0.55rem;
+          padding: 0.22rem;
         }
         .topbar-title {
           font-size: 1.15rem;
@@ -1594,8 +1609,8 @@ st.markdown(
       <span id="velora-top" class="section-anchor"></span>
       <div class="topbar-title">
         <div class="brand-lockup">
-          <img class="brand-logo" src="__VELORA_WORDMARK__" alt="Velora logo" />
-          <span>Control Center</span>
+          <img class="brand-logo" src="__VELORA_BADGE__" alt="Velora logo" />
+          <span>Velora Control Center</span>
         </div>
       </div>
       <div class="topbar-nav">
@@ -1623,7 +1638,7 @@ st.markdown(
       </div>
     </div>
     <a class="back-to-top" href="#velora-top" aria-label="Back to top">↑</a>
-    """.replace("__VELORA_WORDMARK__", LOGO_URI),
+    """.replace("__VELORA_BADGE__", BADGE_URI),
     unsafe_allow_html=True,
 )
 
