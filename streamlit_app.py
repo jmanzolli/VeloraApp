@@ -449,6 +449,9 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 1rem;
+        justify-content: flex-start;
+        margin-right: auto;
+        text-align: left;
         font-size: 1.4rem;
         font-weight: 700;
         letter-spacing: 0.01em;
@@ -456,6 +459,7 @@ st.markdown(
       .brand-lockup {
         display: flex;
         align-items: center;
+        justify-content: flex-start;
         gap: 1rem;
       }
       .brand-logo {
@@ -1321,6 +1325,9 @@ st.markdown(
         border-color: rgba(84,213,189,0.24);
       }
       .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         border-radius: 12px 12px 0 0;
         margin-top: 0.25rem;
         padding: 0.82rem 1.05rem;
@@ -1332,6 +1339,9 @@ st.markdown(
       .topbar-title {
         font-size: 1.08rem;
         letter-spacing: 0;
+        justify-content: flex-start;
+        margin-right: auto;
+        text-align: left;
       }
       .brand-logo {
         height: 2.2rem;
@@ -1528,6 +1538,7 @@ st.markdown(
         .topbar {
           display: grid;
           grid-template-columns: 1fr;
+          justify-items: start;
           gap: 0.65rem;
           padding: 0.9rem;
           border-radius: 12px 12px 0 0;
@@ -1547,6 +1558,9 @@ st.markdown(
         .topbar-title {
           font-size: 1.15rem;
           line-height: 1.1;
+          width: 100%;
+          justify-content: flex-start;
+          text-align: left;
         }
         .topbar-nav {
           display: grid;
