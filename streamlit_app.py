@@ -760,10 +760,20 @@ st.markdown(
         margin: 0 0 0.95rem;
       }
       .workspace-step {
+        display: block;
         padding: 0.78rem 0.9rem;
         border-radius: 14px;
         border: 1px solid rgba(11,53,82,0.09);
         background: rgba(255,255,255,0.82);
+        color: inherit;
+        text-decoration: none !important;
+        transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+      }
+      .workspace-step:hover,
+      .workspace-step:focus {
+        transform: translateY(-1px);
+        border-color: rgba(67,184,163,0.36);
+        background: rgba(255,255,255,0.96);
       }
       .workspace-step strong {
         display: block;
@@ -780,6 +790,29 @@ st.markdown(
       .workspace-step--active {
         background: linear-gradient(180deg, rgba(232,247,241,0.98), rgba(255,255,255,0.98));
         border-color: rgba(67,184,163,0.34);
+      }
+      .section-anchor {
+        display: block;
+        position: relative;
+        top: -5.2rem;
+        visibility: hidden;
+      }
+      .back-to-top {
+        position: fixed;
+        right: 1.25rem;
+        bottom: 1.25rem;
+        z-index: 999;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #102f43, #16a389);
+        color: white !important;
+        text-decoration: none !important;
+        font-weight: 900;
+        box-shadow: 0 16px 32px rgba(16,47,67,0.24);
       }
       .scenario-strip {
         display: grid;
@@ -1360,6 +1393,10 @@ st.markdown(
         background: rgba(255,255,255,0.72);
         box-shadow: none;
       }
+      .workspace-step:hover,
+      .workspace-step:focus {
+        background: rgba(255,255,255,0.96);
+      }
       .workspace-step--active {
         background: linear-gradient(180deg, rgba(230,247,242,0.95), rgba(255,255,255,0.78));
         border-color: rgba(22,163,137,0.34);
@@ -1545,9 +1582,16 @@ st.markdown(
           flex-wrap: wrap;
           gap: 0.75rem;
         }
+        .back-to-top {
+          right: 0.9rem;
+          bottom: 0.9rem;
+          width: 2.75rem;
+          height: 2.75rem;
+        }
       }
     </style>
     <div class="topbar">
+      <span id="velora-top" class="section-anchor"></span>
       <div class="topbar-title">
         <div class="brand-lockup">
           <img class="brand-logo" src="__VELORA_WORDMARK__" alt="Velora logo" />
@@ -1555,9 +1599,9 @@ st.markdown(
         </div>
       </div>
       <div class="topbar-nav">
-        <span class="topbar-pill">Data</span>
-        <span class="topbar-pill">Scenarios</span>
-        <span class="topbar-pill">City Report</span>
+        <a class="topbar-pill" href="#velora-prepare">Data</a>
+        <a class="topbar-pill" href="#velora-compare">Scenarios</a>
+        <a class="topbar-pill" href="#velora-package">City Report</a>
       </div>
     </div>
     <div class="hero">
@@ -1578,6 +1622,7 @@ st.markdown(
         </div>
       </div>
     </div>
+    <a class="back-to-top" href="#velora-top" aria-label="Back to top">↑</a>
     """.replace("__VELORA_WORDMARK__", LOGO_URI),
     unsafe_allow_html=True,
 )
@@ -1623,21 +1668,25 @@ def render_panel_header(title: str, description: str | None = None) -> None:
         st.markdown(f'<p class="panel-lead">{description}</p>', unsafe_allow_html=True)
 
 
+def render_anchor(anchor_id: str) -> None:
+    st.markdown(f'<span id="{anchor_id}" class="section-anchor"></span>', unsafe_allow_html=True)
+
+
 def render_workspace_rail(active_step: str = "Compare") -> None:
     steps = [
-        ("Prepare", "Data and assumptions"),
-        ("Optimize", "Run and save results"),
-        ("Compare", "Choose plans and baselines"),
-        ("Package", "Export decisions"),
+        ("Prepare", "Data and assumptions", "velora-prepare"),
+        ("Optimize", "Run and save results", "velora-optimize"),
+        ("Compare", "Choose plans and baselines", "velora-compare"),
+        ("Package", "Export decisions", "velora-package"),
     ]
     cards = []
-    for label, description in steps:
+    for label, description, anchor in steps:
         state_class = " workspace-step--active" if label == active_step else ""
         cards.append(
-            f'<div class="workspace-step{state_class}">'
+            f'<a class="workspace-step{state_class}" href="#{anchor}">'
             f"<strong>{html.escape(label)}</strong>"
             f"<span>{html.escape(description)}</span>"
-            "</div>"
+            "</a>"
         )
     st.markdown(f'<div class="workspace-rail">{"".join(cards)}</div>', unsafe_allow_html=True)
 
@@ -1872,6 +1921,7 @@ def generate_report_markdown(run_payload: dict[str, Any]) -> str:
 
 render_sidebar_brand()
 
+render_anchor("velora-prepare")
 render_sidebar_section_heading(
     "1. Data Files",
     "Bring in the inputs for this scenario.",
@@ -2035,6 +2085,7 @@ st.sidebar.markdown(
     '<div class="sidebar-note">Start with the default setup, run one scenario, then refine assumptions after you see the first trade-off chart and network map.</div>',
     unsafe_allow_html=True,
 )
+render_anchor("velora-optimize")
 run_button = st.sidebar.button("Run Optimization", type="primary", use_container_width=True)
 if run_button:
     st.session_state["station_preview_open"] = False
@@ -2837,6 +2888,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
     if default_scenario_id not in scenario_entries:
         default_scenario_id = scenario_ids[0]
 
+    render_anchor("velora-compare")
     open_panel("control-shell")
     render_workspace_rail("Compare")
     render_panel_header(
@@ -2962,6 +3014,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
 
     st.session_state[f"selected_scenario_id_{run_id}"] = selected_scenario_id
 
+    render_anchor("velora-map")
     main_cols = st.columns([1.9, 1], gap="large")
     with main_cols[0]:
         open_panel()
@@ -2996,8 +3049,10 @@ def render_run(run_payload: dict[str, Any]) -> None:
             st.caption(selected_entry["notes"])
         close_panel()
 
+    render_anchor("velora-scenarios")
     render_scenario_studio(run_id, selected_entry, scenario_entries, built_in_solution_names)
 
+    render_anchor("velora-tradeoff")
     open_panel()
     render_panel_header(
         "Trade-off explorer",
@@ -3014,6 +3069,7 @@ def render_run(run_payload: dict[str, Any]) -> None:
         st.session_state[f"selected_scenario_id_{run_id}"] = f"core::{pareto_selected_solution_name}"
         st.rerun()
 
+    render_anchor("velora-library")
     scenario_summary_df = build_scenario_summary_rows(scenario_entries, run_config)
     bottom_cols = st.columns([1.25, 1.05], gap="large")
     with bottom_cols[0]:
@@ -3119,8 +3175,10 @@ def render_run(run_payload: dict[str, Any]) -> None:
             )
         close_panel()
 
+    render_anchor("velora-details")
     render_run_details(run_payload)
 
+    render_anchor("velora-package")
     selected_label_slug = selected_entry["label"].lower().replace(" ", "_")
     stations_csv = pd.DataFrame(selected_entry["solution"].get("selected_stations", [])).to_csv(index=False).encode("utf-8")
     links_csv = pd.DataFrame(selected_entry["solution"].get("selected_links", [])).to_csv(index=False).encode("utf-8")
