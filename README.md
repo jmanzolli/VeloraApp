@@ -9,6 +9,7 @@ This repository is intentionally platform-only. Paper assets, exploratory notebo
 - Upload station demand files and street-network files.
 - Generate a Canadian population-based station demand CSV when station trips do not exist yet.
 - Calculate an LTS-scored street network from a map-selected area, OSM streets, and optional municipal layers.
+- Compare point-to-point cycling routes by shortest distance, lowest LTS, and a balanced distance/stress objective.
 - Generate candidate station alternatives and corridor upgrade options.
 - Run an NSGA-II multi-objective optimization.
 - Review representative scenarios: `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
@@ -70,6 +71,8 @@ To preview the product without uploading data, click **Load demo scenario** in t
 Use **Population Demand Builder** when there is no station CSV yet. Upload a Canadian census population polygon layer, draw/select the planning area, and export the generated station CSV for the optimizer.
 
 Use **LTS Calculator** to create a street-network file with `geometry` and `lts` from a map-selected area before running the optimizer.
+
+Use **Route Planner** to upload an LTS network, enter point A and point B as street/place names, and compare shortest, lowest-stress, and balanced routes.
 
 ## Input Data
 
