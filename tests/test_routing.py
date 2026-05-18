@@ -50,8 +50,8 @@ class RoutePlannerTests(unittest.TestCase):
         distance_weighted = self.planner.calculate_routes(graph, (0.0, 0.0), (2.0, 0.0), balanced_stress_weight=0.0)
         stress_weighted = self.planner.calculate_routes(graph, (0.0, 0.0), (2.0, 0.0), balanced_stress_weight=1.0)
 
-        distance_balanced = next(route for route in distance_weighted for label in route.labels if label == "Balanced")
-        stress_balanced = next(route for route in stress_weighted for label in route.labels if label == "Balanced")
+        distance_balanced = next(route for route in distance_weighted for label in route.labels if label == "Balanced Comfort")
+        stress_balanced = next(route for route in stress_weighted for label in route.labels if label == "Balanced Comfort")
         self.assertEqual(distance_balanced.distance_m, 2.0)
         self.assertEqual(stress_balanced.distance_m, 6.0)
 

@@ -16,6 +16,7 @@ from shapely.geometry import shape
 from streamlit_folium import st_folium
 
 from ui.demand import CanadianPopulationDemandBuilder, DemandConfig
+from ui.storage import save_demand_artifact
 
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "ui" / "assets"
@@ -34,9 +35,18 @@ for key, value in DEFAULT_MONTREAL_BBOX.items():
 st.session_state.setdefault("demand_map_center", [45.52, -73.60])
 st.session_state.setdefault("demand_map_zoom", 11)
 
+pending_bbox = st.session_state.pop("demand_pending_bbox", None)
+if pending_bbox is not None:
+    for key in ["north", "south", "east", "west"]:
+        st.session_state[f"demand_bbox_{key}"] = float(pending_bbox[key])
+    st.session_state["demand_map_center"] = [
+        float((pending_bbox["south"] + pending_bbox["north"]) / 2),
+        float((pending_bbox["west"] + pending_bbox["east"]) / 2),
+    ]
+
 
 st.set_page_config(
-    page_title="Velora | Population Demand Builder",
+    page_title="Bike Network Planner | Demand",
     layout="wide",
     initial_sidebar_state="expanded",
     page_icon=str(BADGE_PATH),
@@ -163,6 +173,10 @@ def set_selected_bbox(bbox: dict[str, float]) -> None:
     ]
 
 
+def queue_selected_bbox(bbox: dict[str, float]) -> None:
+    st.session_state["demand_pending_bbox"] = {key: float(bbox[key]) for key in ["north", "south", "east", "west"]}
+
+
 def bbox_from_drawing(drawing: dict[str, Any] | None) -> dict[str, float] | None:
     if not drawing or not drawing.get("geometry"):
         return None
@@ -274,8 +288,8 @@ def make_candidate_map(points: gpd.GeoDataFrame) -> go.Figure:
 st.markdown(
     f"""
     <div class="velora-hero">
-      <h1 class="velora-title"><img src="{BADGE_URI}" alt="">Population Demand Builder</h1>
-      <p class="velora-subtitle">Create a starter station-demand file from Canadian census population polygons when historical station trips do not exist yet.</p>
+      <h1 class="velora-title"><img src="{BADGE_URI}" alt="">Demand</h1>
+      <p class="velora-subtitle">Create optimizer-ready station candidates from population polygons when mapped station locations do not exist yet.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -302,27 +316,69 @@ with st.sidebar:
         st.number_input("South", format="%.6f", key="demand_bbox_south")
         st.number_input("East", format="%.6f", key="demand_bbox_east")
 
-    st.markdown("### Census Population")
-    population_upload = st.file_uploader(
-        "StatsCan DA/CT population layer",
-        type=["gpkg", "geojson", "json", "shp", "parquet", "zip"],
-        help="Upload a Canadian census polygon layer with a population field. Zip shapefiles are supported.",
+    st.markdown("### Population Basis")
+    population_mode = st.radio(
+        "Population input",
+        ["Use assumptions", "Upload census layer"],
+        help="Use assumptions to continue without documents, or upload census polygons when you have them.",
     )
+    population_upload = None
+    assumed_population = None
+    assumed_grid_size = None
+    assumed_center_concentration = None
+    if population_mode == "Upload census layer":
+        population_upload = st.file_uploader(
+            "StatsCan DA/CT population layer",
+            type=["gpkg", "geojson", "json", "shp", "parquet", "zip"],
+            help="Upload a Canadian census polygon layer with a population field. Zip shapefiles are supported.",
+        )
+    else:
+        assumed_population = st.number_input(
+            "Assumed population in selected area",
+            min_value=1000.0,
+            value=250000.0,
+            step=10000.0,
+        )
+        assumed_grid_size = st.slider("Synthetic population cell size (m)", 250, 1500, 500, step=50)
+        assumed_center_concentration = st.slider(
+            "Center concentration",
+            0.2,
+            4.0,
+            1.8,
+            step=0.1,
+            help="Higher values concentrate more assumed demand near the center of the selected area.",
+        )
 
     st.markdown("### Demand Assumptions")
     adoption_rate = st.slider("Bike adoption rate (%)", 0.0, 40.0, 8.0, step=0.5) / 100.0
     daily_trip_rate = st.slider("Daily trips per adopting resident", 0.05, 2.0, 0.35, step=0.05)
     annualization_days = st.slider("Annualization days", 30, 365, 365, step=5)
+    st.markdown("### Artificial Station Density")
     minimum_population = st.number_input("Minimum population per candidate", min_value=0.0, value=50.0, step=25.0)
+    target_spacing_meters = st.slider(
+        "Target spacing between candidates (m)",
+        min_value=0,
+        max_value=1500,
+        value=250,
+        step=50,
+        help="Higher spacing creates fewer artificial station candidates by keeping high-demand points farther apart.",
+    )
+    max_candidates = st.number_input(
+        "Maximum artificial candidates",
+        min_value=1,
+        value=250,
+        step=25,
+        help="Caps the number of generated station locations before optimization.",
+    )
     minimum_docks = st.number_input("Minimum docks", min_value=1.0, value=8.0, step=1.0)
     trips_per_dock = st.number_input("Trips per dock heuristic", min_value=100.0, value=4000.0, step=250.0)
-    generate_button = st.button("Generate Demand CSV", type="primary", use_container_width=True)
+    generate_button = st.button("Generate Artificial Station Network", type="primary", use_container_width=True)
 
 drawn_bbox = render_area_selector(city_name)
 if drawn_bbox is not None:
     st.info(f"Drawn area detected: {format_bbox(drawn_bbox)}")
     if st.button("Use drawn area", type="primary"):
-        set_selected_bbox(drawn_bbox)
+        queue_selected_bbox(drawn_bbox)
         st.rerun()
 
 active_bbox = selected_bbox()
@@ -331,29 +387,46 @@ if active_bbox["north"] <= active_bbox["south"] or active_bbox["east"] <= active
     st.stop()
 
 if generate_button:
-    if population_upload is None:
-        st.error("Upload a Canadian census population polygon layer first.")
-    else:
-        try:
-            with st.spinner("Generating population-based demand candidates..."):
-                builder = CanadianPopulationDemandBuilder()
+    try:
+        with st.spinner("Generating population-based demand candidates..."):
+            builder = CanadianPopulationDemandBuilder()
+            if population_mode == "Upload census layer":
+                if population_upload is None:
+                    raise ValueError("Upload a census population polygon layer, or switch to assumptions.")
                 population_gdf = read_population_upload(population_upload)
                 clipped = builder.clip_to_bbox(population_gdf, active_bbox)
-                config = DemandConfig(
-                    adoption_rate=adoption_rate,
-                    daily_trip_rate=daily_trip_rate,
-                    annualization_days=annualization_days,
-                    minimum_population=minimum_population,
-                    minimum_docks=minimum_docks,
-                    trips_per_dock=trips_per_dock,
+            else:
+                clipped = builder.generate_assumed_population_layer(
+                    active_bbox,
+                    total_population=float(assumed_population),
+                    cell_size_meters=float(assumed_grid_size),
+                    center_concentration=float(assumed_center_concentration),
                 )
-                station_table, candidate_points = builder.generate_station_table(clipped, config)
-            st.session_state["population_station_table"] = station_table
-            st.session_state["population_candidate_points"] = candidate_points
-            st.session_state["population_clipped_gdf"] = clipped
-            st.success("Population demand file generated.")
-        except Exception as exc:
-            st.error(str(exc))
+            config = DemandConfig(
+                adoption_rate=adoption_rate,
+                daily_trip_rate=daily_trip_rate,
+                annualization_days=annualization_days,
+                minimum_population=minimum_population,
+                minimum_docks=minimum_docks,
+                trips_per_dock=trips_per_dock,
+                target_spacing_meters=float(target_spacing_meters),
+                max_candidates=int(max_candidates),
+            )
+            station_table, candidate_points = builder.generate_station_table(clipped, config)
+        st.session_state["population_station_table"] = station_table
+        st.session_state["population_candidate_points"] = candidate_points
+        st.session_state["population_clipped_gdf"] = clipped
+        st.session_state["population_generation_config"] = {
+            **config.__dict__,
+            "population_mode": population_mode,
+            "assumed_population": assumed_population,
+            "assumed_grid_size": assumed_grid_size,
+            "assumed_center_concentration": assumed_center_concentration,
+        }
+        st.session_state["population_city_name"] = city_name
+        st.success("Artificial station network generated.")
+    except Exception as exc:
+        st.error(str(exc))
 
 station_table = st.session_state.get("population_station_table")
 candidate_points = st.session_state.get("population_candidate_points")
@@ -363,7 +436,7 @@ if station_table is None or candidate_points is None:
     st.markdown(
         """
         <div class="note-panel">
-          Upload a Statistics Canada dissemination-area or census-tract population layer, select the planning area, and generate a Velora-compatible station-demand file. The output can be uploaded directly into the Bike Allocation page.
+          Start from assumptions when no population document is available, or upload a Statistics Canada polygon layer when you have one. Select the planning area and generate optimizer-ready artificial station candidates.
         </div>
         """,
         unsafe_allow_html=True,
@@ -388,16 +461,49 @@ with tab_map:
 with tab_data:
     st.dataframe(station_table.head(300), use_container_width=True, hide_index=True)
     if clipped_gdf is not None:
-        st.caption(f"Intersecting census polygons used: {len(clipped_gdf):,}")
+        source_label = "synthetic population cells" if population_mode == "Use assumptions" else "intersecting census polygons"
+        st.caption(f"{source_label.title()} used: {len(clipped_gdf):,}")
 
 with tab_export:
     optimizer_columns = ["Station_Name", "Latitude", "Longitude", "Trips", "estimated_docks"]
+    artifact_label = st.text_input(
+        "Saved input name",
+        value=f"{city_name} artificial stations",
+        help="This name appears in the planner's saved/generated station input list.",
+    )
     st.download_button(
         "Download optimizer-ready station CSV",
         data=csv_bytes(station_table[optimizer_columns]),
-        file_name="velora_population_demand.csv",
+        file_name="bike_network_artificial_stations.csv",
         mime="text/csv",
         type="primary",
         use_container_width=True,
     )
-    st.caption("Upload this CSV as the station file in Velora's Bike Allocation page.")
+    save_cols = st.columns(2)
+    if save_cols[0].button("Save and create LTS network", use_container_width=True):
+        artifact = save_demand_artifact(
+            artifact_label,
+            station_table[optimizer_columns],
+            {
+                "city_name": city_name,
+                "bbox": active_bbox,
+                "generation_config": st.session_state.get("population_generation_config", {}),
+            },
+        )
+        st.session_state["selected_demand_artifact_id"] = artifact["artifact_id"]
+        st.success(f"Saved {artifact['label']}.")
+        st.switch_page("pages/LTS_Calculator.py")
+    if save_cols[1].button("Save and open planner", use_container_width=True):
+        artifact = save_demand_artifact(
+            artifact_label,
+            station_table[optimizer_columns],
+            {
+                "city_name": city_name,
+                "bbox": active_bbox,
+                "generation_config": st.session_state.get("population_generation_config", {}),
+            },
+        )
+        st.session_state["selected_demand_artifact_id"] = artifact["artifact_id"]
+        st.success(f"Saved {artifact['label']}.")
+        st.switch_page("Bike_Network_Planner.py")
+    st.caption("Saved artificial station networks can be selected directly in the planner without downloading and re-uploading.")

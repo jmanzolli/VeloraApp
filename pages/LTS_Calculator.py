@@ -17,6 +17,8 @@ from streamlit_folium import st_folium
 from ui.lts import CityNetworkBuilder, LTSCalculator, LTSFeatureExtractor
 from ui.lts.builder import BoundingBox
 from ui.lts.export import export_network_bytes, prepare_optimizer_export
+from ui.effort import EffortCalculator, fetch_online_endpoint_elevations, sample_dem_endpoints
+from ui.storage import save_lts_artifact
 
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "ui" / "assets"
@@ -30,7 +32,7 @@ def load_asset_data_uri(path: Path) -> str:
 
 
 st.set_page_config(
-    page_title="Velora | LTS Calculator",
+    page_title="Bike Network Planner | LTS Network Builder",
     layout="wide",
     initial_sidebar_state="expanded",
     page_icon=str(BADGE_PATH),
@@ -49,6 +51,15 @@ for key, value in DEFAULT_MONTREAL_BBOX.items():
     st.session_state.setdefault(f"lts_bbox_{key}", value)
 st.session_state.setdefault("lts_map_center", [45.52, -73.60])
 st.session_state.setdefault("lts_map_zoom", 11)
+
+pending_bbox = st.session_state.pop("lts_pending_bbox", None)
+if pending_bbox is not None:
+    for key in ["north", "south", "east", "west"]:
+        st.session_state[f"lts_bbox_{key}"] = float(pending_bbox[key])
+    st.session_state["lts_map_center"] = [
+        float((pending_bbox["south"] + pending_bbox["north"]) / 2),
+        float((pending_bbox["west"] + pending_bbox["east"]) / 2),
+    ]
 
 st.markdown(
     """
@@ -193,6 +204,10 @@ def set_selected_bbox(bbox: dict[str, float]) -> None:
     ]
 
 
+def queue_selected_bbox(bbox: dict[str, float]) -> None:
+    st.session_state["lts_pending_bbox"] = {key: float(bbox[key]) for key in ["north", "south", "east", "west"]}
+
+
 def bbox_from_drawing(drawing: dict[str, Any] | None) -> dict[str, float] | None:
     if not drawing:
         return None
@@ -258,6 +273,9 @@ def build_lts_network(
     base_network_upload,
     municipal_uploads: list[Any],
     include_inaccessible: bool,
+    elevation_source: str,
+    dem_upload,
+    steepness_threshold: float,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     builder = CityNetworkBuilder()
     extractor = LTSFeatureExtractor()
@@ -281,11 +299,21 @@ def build_lts_network(
 
     normalized = extractor.normalize(raw_edges)
     scored = calculator.score_dataframe(normalized)
+    if elevation_source == "Upload DEM" and dem_upload is not None:
+        dem_path = save_uploaded_vector(dem_upload)
+        try:
+            scored = sample_dem_endpoints(scored, str(dem_path))
+        finally:
+            dem_path.unlink(missing_ok=True)
+    elif elevation_source == "Online elevation":
+        scored = fetch_online_endpoint_elevations(scored)
+    scored = EffortCalculator().score_dataframe(scored)
     exportable = prepare_optimizer_export(scored, include_inaccessible=include_inaccessible)
+    exportable.attrs["steepness_threshold"] = steepness_threshold
     return scored, exportable
 
 
-def make_lts_map(gdf: gpd.GeoDataFrame) -> go.Figure:
+def make_lts_map(gdf: gpd.GeoDataFrame, mode: str = "Traffic Stress") -> go.Figure:
     colors = {
         1: "#2f9e44",
         2: "#74b816",
@@ -298,8 +326,28 @@ def make_lts_map(gdf: gpd.GeoDataFrame) -> go.Figure:
         return fig
 
     display = gdf.to_crs("EPSG:4326")
-    for level in [1, 2, 3, 4]:
-        subset = display[display["lts"].round().astype(int) == level]
+    field = "lts"
+    levels = [1, 2, 3, 4]
+    labels = {level: f"LTS {level}" for level in levels}
+    if mode == "Cyclist Effort":
+        field = "steepness_level"
+        levels = [3.5, 5.0, 6.5, 8.0, 9.5]
+        colors = {3.5: "#2f9e44", 5.0: "#74b816", 6.5: "#f08c00", 8.0: "#e8590c", 9.5: "#c92a2a"}
+        labels = {level: f"SL {level:.1f}" for level in levels}
+    elif mode == "Combined Comfort":
+        display = display.copy()
+        sl_to_band = {3.5: 1, 5.0: 2, 6.5: 3, 8.0: 4, 9.5: 4}
+        display["combined_comfort"] = pd.concat(
+            [
+                pd.to_numeric(display["lts"], errors="coerce"),
+                pd.to_numeric(display["steepness_level"], errors="coerce").map(sl_to_band),
+            ],
+            axis=1,
+        ).max(axis=1)
+        field = "combined_comfort"
+        labels = {level: f"Comfort {level}" for level in levels}
+    for level in levels:
+        subset = display[pd.to_numeric(display[field], errors="coerce").round(1) == level]
         if subset.empty:
             continue
         lon: list[float | None] = []
@@ -317,6 +365,8 @@ def make_lts_map(gdf: gpd.GeoDataFrame) -> go.Figure:
                         (
                             f"Segment: {row.get('segment_id', '')}<br>"
                             f"LTS: {row.get('lts', '')}<br>"
+                            f"Steepness Level: {row.get('steepness_level', 'n/a')}<br>"
+                            f"Uphill grade: {float(row.get('uphill_grade_pct', 0.0)):.1f}%<br>"
                             f"Confidence: {float(row.get('confidence', 0.0)):.2f}<br>"
                             f"Missing: {row.get('missing_inputs', '') or 'none'}"
                         )
@@ -330,7 +380,7 @@ def make_lts_map(gdf: gpd.GeoDataFrame) -> go.Figure:
                 lat=lat,
                 mode="lines",
                 line=dict(width=4, color=colors[level]),
-                name=f"LTS {level}",
+                name=labels[level],
                 text=hover,
                 hoverinfo="text",
             )
@@ -362,8 +412,8 @@ def render_metric(label: str, value: str) -> None:
 st.markdown(
     f"""
     <div class="lts-hero">
-      <h1 class="lts-title"><img src="{BADGE_URI}" alt="">LTS Calculator</h1>
-      <p class="lts-subtitle">Generate a bicycle Level of Traffic Stress network from OSM streets and optional municipal overrides, then export it for Velora's allocation optimizer.</p>
+      <h1 class="lts-title"><img src="{BADGE_URI}" alt="">LTS Network Builder</h1>
+      <p class="lts-subtitle">Generate a bicycle Level of Traffic Stress network from OSM streets and optional municipal overrides, then save it for optimization and route testing.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -404,6 +454,10 @@ with st.sidebar:
         accept_multiple_files=True,
         help="Optional road/cycle layers. Nearest municipal values override OSM attributes when fields are recognized.",
     )
+    st.markdown("### Elevation")
+    elevation_source = st.radio("Elevation source", ["Online elevation", "Upload DEM", "None"], index=0)
+    dem_upload = st.file_uploader("DEM raster", type=["tif", "tiff"], disabled=elevation_source != "Upload DEM")
+    steepness_threshold = st.select_slider("Steepness threshold", options=[3.5, 5.0, 6.5, 8.0, 9.5], value=5.0)
 
     st.markdown("### Export")
     export_format = st.selectbox("Format", ["GeoPackage", "GeoJSON"])
@@ -414,7 +468,7 @@ drawn_bbox = render_area_selector(city_name)
 if drawn_bbox is not None:
     st.info(f"Drawn area detected: {format_bbox(drawn_bbox)}")
     if st.button("Use drawn area", type="primary"):
-        set_selected_bbox(drawn_bbox)
+        queue_selected_bbox(drawn_bbox)
         st.rerun()
 
 active_bbox = selected_bbox()
@@ -432,6 +486,9 @@ if calculate_button:
                 base_network_upload=base_network_upload,
                 municipal_uploads=municipal_uploads or [],
                 include_inaccessible=include_inaccessible,
+                elevation_source=elevation_source,
+                dem_upload=dem_upload,
+                steepness_threshold=steepness_threshold,
             )
             st.session_state["lts_scored_gdf"] = scored_gdf
             st.session_state["lts_export_gdf"] = export_gdf
@@ -454,7 +511,7 @@ if scored is None or exportable is None:
     )
     st.stop()
 
-metric_cols = st.columns(4)
+metric_cols = st.columns(5)
 with metric_cols[0]:
     render_metric("Scored Segments", f"{len(scored):,}")
 with metric_cols[1]:
@@ -463,11 +520,14 @@ with metric_cols[2]:
     render_metric("Mean LTS", f"{exportable['lts'].mean():.2f}" if not exportable.empty else "n/a")
 with metric_cols[3]:
     render_metric("Mean Confidence", f"{scored['confidence'].mean():.2f}" if not scored.empty else "n/a")
+with metric_cols[4]:
+    render_metric("SL Exceedance", f"{(exportable['steepness_level'] > steepness_threshold).mean() * 100:.1f}%" if exportable["steepness_level"].notna().any() else "n/a")
 
 tab_map, tab_quality, tab_data, tab_export = st.tabs(["Map", "Quality", "Data", "Export"])
 
 with tab_map:
-    st.plotly_chart(make_lts_map(exportable), use_container_width=True)
+    map_mode = st.radio("Map mode", ["Traffic Stress", "Cyclist Effort", "Combined Comfort"], horizontal=True)
+    st.plotly_chart(make_lts_map(exportable, mode=map_mode), use_container_width=True)
 
 with tab_quality:
     col_left, col_right = st.columns([1, 1])
@@ -500,6 +560,12 @@ with tab_quality:
             st.success("No fallback inputs were recorded.")
         else:
             st.dataframe(missing, use_container_width=True, hide_index=True)
+    if exportable["steepness_level"].notna().any():
+        st.markdown("#### Cyclist effort distribution")
+        effort_counts = exportable["steepness_level"].value_counts().sort_index().rename_axis("Steepness Level").reset_index(name="Segments")
+        st.dataframe(effort_counts, use_container_width=True, hide_index=True)
+        if effort_counts["Steepness Level"].nunique() == 1:
+            st.warning("All scored segments share one Steepness Level. Check elevation quality, segment lengths, and the selected source before relying on effort outputs.")
 
 with tab_data:
     preview_columns = [
@@ -510,12 +576,20 @@ with tab_data:
         "lts_winter",
         "lts_contraflow",
         "confidence",
+        "steepness_level",
+        "uphill_grade_pct",
+        "effort_exposure",
         "missing_inputs",
     ]
     st.dataframe(scored[[column for column in preview_columns if column in scored.columns]].head(200), use_container_width=True)
 
 with tab_export:
     payload, filename, mime = export_network_bytes(exportable, export_format)
+    artifact_label = st.text_input(
+        "Saved input name",
+        value=f"{city_name} LTS network",
+        help="This name appears in the planner and Route Planner saved/generated LTS network lists.",
+    )
     st.download_button(
         "Download optimizer-ready LTS network",
         data=payload,
@@ -524,4 +598,31 @@ with tab_export:
         type="primary",
         use_container_width=True,
     )
-    st.caption("The exported file includes `geometry` and numeric `lts`, so it can be uploaded as the street network in the bike allocation calculator.")
+    save_cols = st.columns(2)
+    if save_cols[0].button("Save and open planner", use_container_width=True):
+        artifact = save_lts_artifact(
+            artifact_label,
+            exportable,
+            {
+                "city_name": city_name,
+                "bbox": active_bbox,
+                "format": "GeoJSON",
+            },
+        )
+        st.session_state["selected_lts_artifact_id"] = artifact["artifact_id"]
+        st.success(f"Saved {artifact['label']}.")
+        st.switch_page("Bike_Network_Planner.py")
+    if save_cols[1].button("Save and open Route Planner", use_container_width=True):
+        artifact = save_lts_artifact(
+            artifact_label,
+            exportable,
+            {
+                "city_name": city_name,
+                "bbox": active_bbox,
+                "format": "GeoJSON",
+            },
+        )
+        st.session_state["selected_lts_artifact_id"] = artifact["artifact_id"]
+        st.success(f"Saved {artifact['label']}.")
+        st.switch_page("pages/Route_Planner.py")
+    st.caption("Saved LTS networks can be selected directly in the planner and Route Planner without downloading and re-uploading.")

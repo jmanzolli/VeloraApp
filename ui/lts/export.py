@@ -5,12 +5,15 @@ from pathlib import Path
 
 import geopandas as gpd
 
+from ui.effort import ensure_effort_columns
+
 
 def prepare_optimizer_export(scored: gpd.GeoDataFrame, include_inaccessible: bool = False) -> gpd.GeoDataFrame:
     export = scored.copy()
     if not include_inaccessible and "lts_raw" in export:
         export = export[export["lts_raw"].astype(float) <= 4].copy()
     export["lts"] = export["lts"].astype(float).clip(1, 4)
+    export = ensure_effort_columns(export)
     return export.dropna(subset=["geometry"]).reset_index(drop=True)
 
 

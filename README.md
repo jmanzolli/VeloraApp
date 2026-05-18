@@ -68,9 +68,9 @@ http://127.0.0.1:8501
 
 To preview the product without uploading data, click **Load demo scenario** in the sidebar.
 
-Use **Population Demand Builder** when there is no station CSV yet. Upload a Canadian census population polygon layer, draw/select the planning area, and export the generated station CSV for the optimizer.
+Use **Demand** when there is no station CSV or station map yet. Start from assumptions or upload a Canadian census population polygon layer, draw/select the planning area, and save or export generated station candidates for the optimizer.
 
-Use **LTS Calculator** to create a street-network file with `geometry` and `lts` from a map-selected area before running the optimizer.
+Use **LTS Network Builder** to create a street-network file with `geometry` and `lts` from a map-selected area before running the optimizer or Route Planner.
 
 Use **Route Planner** to upload an LTS network, enter point A and point B as street/place names, and compare shortest, lowest-stress, and balanced routes.
 
@@ -103,7 +103,7 @@ Supported aliases include:
 - `trips`, `total_trips`, `demand` -> `Trips`
 - `docks`, `estimated_docks` -> `estimated_docks`
 
-If historical station trips are unavailable, generate this file from the **Population Demand Builder** page. It accepts Canadian census population polygons such as dissemination areas or census tracts and outputs an optimizer-ready CSV with the required fields.
+If historical station trips or mapped station positions are unavailable, generate this file from the **Demand** page. It can start from assumptions or accept Canadian census population polygons such as dissemination areas or census tracts, then outputs optimizer-ready artificial station candidates with the required fields.
 
 ### Network File
 

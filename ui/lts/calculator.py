@@ -220,7 +220,7 @@ class LTSCalculator:
             pass
         if isinstance(value, list):
             return [str(item) for item in value if str(item)]
-        if isinstance(value, tuple | set):
+        if isinstance(value, (tuple, set)):
             return [str(item) for item in value if str(item)]
         if isinstance(value, str):
             if not value.strip():

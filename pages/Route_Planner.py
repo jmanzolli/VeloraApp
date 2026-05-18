@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from ui.routing import RouteEndpoint, RoutePlanner, RouteResult
+from ui.storage import list_lts_artifacts
 
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "ui" / "assets"
@@ -23,7 +24,7 @@ def load_asset_data_uri(path: Path) -> str:
 
 
 st.set_page_config(
-    page_title="Velora | Route Planner",
+    page_title="Bike Network Planner | Route Planner",
     layout="wide",
     initial_sidebar_state="expanded",
     page_icon=str(BADGE_PATH),
@@ -112,8 +113,30 @@ st.markdown(
 )
 
 
+def artifact_label(artifact: dict) -> str:
+    created = str(artifact.get("created_at", ""))
+    label = str(artifact.get("label") or artifact.get("artifact_id"))
+    row_count = int(artifact.get("row_count") or 0)
+    return f"{label} | {row_count:,} rows | {created}"
+
+
+def selected_artifact(artifacts: list[dict], selected_label: str | None) -> dict | None:
+    if not selected_label:
+        return None
+    return next((artifact for artifact in artifacts if artifact_label(artifact) == selected_label), None)
+
+
+def artifact_path(artifact: dict | None) -> Path | None:
+    if artifact is None:
+        return None
+    path = Path(str(artifact.get("file_path", "")))
+    return path if path.exists() else None
+
+
 def load_uploaded_network(uploaded_file):
     planner = RoutePlanner()
+    if isinstance(uploaded_file, (str, Path)):
+        return planner.load_lts_network(Path(uploaded_file))
     path = planner.write_uploaded_file(uploaded_file)
     try:
         return planner.load_lts_network(path)
@@ -126,7 +149,9 @@ def calculate_route_set(
     city_context: str,
     origin_text: str,
     destination_text: str,
-    balanced_weight_pct: int,
+    balanced_stress_weight_pct: int,
+    balanced_effort_weight_pct: int,
+    steepness_threshold: float,
 ) -> dict[str, object]:
     planner = RoutePlanner()
     network = load_uploaded_network(uploaded_file)
@@ -137,7 +162,9 @@ def calculate_route_set(
         graph,
         origin.node,
         destination.node,
-        balanced_stress_weight=float(balanced_weight_pct) / 100.0,
+        balanced_stress_weight=float(balanced_stress_weight_pct) / 100.0,
+        balanced_effort_weight=float(balanced_effort_weight_pct) / 100.0,
+        steepness_threshold=steepness_threshold,
     )
     return {
         "network": network,
@@ -170,7 +197,8 @@ def make_route_map(routes: list[RouteResult], graph_crs: object, origin: RouteEn
     colors = {
         "Shortest Distance": "#2563eb",
         "Lowest LTS": "#16a34a",
-        "Balanced": "#d97706",
+        "Lowest Effort": "#7c3aed",
+        "Balanced Comfort": "#d97706",
     }
     fig = go.Figure()
     routes_gdf = RoutePlanner.routes_to_geodataframe(routes, graph_crs)
@@ -179,6 +207,7 @@ def make_route_map(routes: list[RouteResult], graph_crs: object, origin: RouteEn
         label = " / ".join(route.labels)
         primary_label = route.labels[0]
         coords = list(row.geometry.coords)
+        effort_hover = f"Mean effort: {route.mean_effort:.2f}<br>" if route.mean_effort is not None else ""
         fig.add_trace(
             go.Scattermapbox(
                 lon=[coord[0] for coord in coords],
@@ -190,6 +219,9 @@ def make_route_map(routes: list[RouteResult], graph_crs: object, origin: RouteEn
                     f"<b>{label}</b><br>"
                     f"Distance: {route.distance_m / 1000.0:.2f} km<br>"
                     f"Mean LTS: {route.mean_lts:.2f}<br>"
+                    f"Elevation gain: {route.elevation_gain_m:.0f} m<br>"
+                    f"Max uphill grade: {route.max_uphill_grade_pct:.1f}%<br>"
+                    f"{effort_hover}"
                     f"Max LTS: {route.max_lts:.0f}<br>"
                     f"Time: {route.estimated_minutes:.0f} min"
                     "<extra></extra>"
@@ -235,7 +267,7 @@ st.markdown(
     f"""
     <div class="velora-hero">
       <h1 class="velora-title"><img src="{BADGE_URI}" alt="">Route Planner</h1>
-      <p class="velora-subtitle">Compare point-to-point cycling routes by shortest distance, lowest traffic stress, and a tunable balanced option.</p>
+      <p class="velora-subtitle">Compare point-to-point cycling routes by distance, traffic stress, cyclist effort, and a tunable balanced option.</p>
     </div>
     """,
     unsafe_allow_html=True,
@@ -243,39 +275,59 @@ st.markdown(
 
 with st.sidebar:
     st.markdown("### Network")
-    network_upload = st.file_uploader(
-        "LTS network",
-        type=["gpkg", "geojson", "json", "shp", "parquet"],
-        help="Upload an LTS-scored network with geometry and lts. The LTS Calculator page can export this file.",
+    lts_artifacts = list_lts_artifacts()
+    network_source = st.radio(
+        "Network source",
+        ["Upload LTS network", "Use saved/generated LTS network"],
+        index=1 if lts_artifacts else 0,
     )
+    network_upload = None
+    selected_lts_artifact = None
+    if network_source == "Upload LTS network":
+        network_upload = st.file_uploader(
+            "LTS network",
+            type=["gpkg", "geojson", "json", "shp", "parquet"],
+            help="Upload an LTS-scored network with geometry and lts. The LTS Calculator page can export this file.",
+        )
+    elif lts_artifacts:
+        lts_labels = [artifact_label(artifact) for artifact in lts_artifacts]
+        preferred = st.session_state.get("selected_lts_artifact_id")
+        preferred_index = next(
+            (idx for idx, artifact in enumerate(lts_artifacts) if artifact.get("artifact_id") == preferred),
+            0,
+        )
+        selected_lts_label = st.selectbox("Saved LTS networks", lts_labels, index=preferred_index)
+        selected_lts_artifact = selected_artifact(lts_artifacts, selected_lts_label)
+    else:
+        st.warning("No saved LTS networks yet.")
+        if st.button("Create LTS network", use_container_width=True):
+            st.switch_page("pages/LTS_Calculator.py")
+    network_input = artifact_path(selected_lts_artifact) if selected_lts_artifact else network_upload
     st.markdown("### Route")
     city_context = st.text_input("City context", value="Montreal, Canada")
     origin_text = st.text_input("Point A", value="McGill University")
     destination_text = st.text_input("Point B", value="Jean-Talon Market")
-    balanced_weight_pct = st.slider(
-        "Balanced stress weight",
-        min_value=0,
-        max_value=100,
-        value=50,
-        step=5,
-        help="0 follows distance, 100 follows lowest LTS. 50 is an even distance/stress balance.",
-    )
+    balanced_stress_weight_pct = st.slider("Balanced stress weight", 0, 100, 35, 5)
+    balanced_effort_weight_pct = st.slider("Balanced effort weight", 0, 100 - balanced_stress_weight_pct, 35, 5)
+    steepness_threshold = st.select_slider("Steepness threshold", options=[3.5, 5.0, 6.5, 8.0, 9.5], value=5.0)
     calculate_button = st.button("Calculate Routes", type="primary", use_container_width=True)
 
 if calculate_button:
-    if network_upload is None:
-        st.error("Upload an LTS network first.")
+    if network_input is None:
+        st.error("Choose, create, or upload an LTS network first.")
     elif not origin_text.strip() or not destination_text.strip():
         st.error("Enter both point A and point B.")
     else:
         try:
             with st.spinner("Calculating route alternatives..."):
                 st.session_state["route_planner_result"] = calculate_route_set(
-                    network_upload,
+                    network_input,
                     city_context=city_context,
                     origin_text=origin_text,
                     destination_text=destination_text,
-                    balanced_weight_pct=balanced_weight_pct,
+                    balanced_stress_weight_pct=balanced_stress_weight_pct,
+                    balanced_effort_weight_pct=balanced_effort_weight_pct,
+                    steepness_threshold=steepness_threshold,
                 )
             st.success("Routes calculated.")
         except Exception as exc:
@@ -286,7 +338,7 @@ if result is None:
     st.markdown(
         """
         <div class="note-panel">
-          Upload the LTS network created by the LTS Calculator, enter two street or place names, and calculate routes. Velora will geocode both locations, snap them to the network, and compare distance and stress alternatives.
+          Choose a saved/generated LTS network or upload one, enter two street or place names, and calculate routes. The planner will geocode both locations, snap them to the network, and compare distance and stress alternatives.
         </div>
         """,
         unsafe_allow_html=True,
@@ -299,7 +351,7 @@ destination = result["destination"]
 graph = result["graph"]
 summary_df = route_summary_dataframe(routes)
 
-metric_cols = st.columns(4)
+metric_cols = st.columns(5)
 with metric_cols[0]:
     render_metric("Routes", f"{len(routes)}")
 with metric_cols[1]:
@@ -308,6 +360,9 @@ with metric_cols[2]:
     render_metric("Best Mean LTS", f"{summary_df['Mean LTS'].min():.2f}")
 with metric_cols[3]:
     render_metric("Fastest Time", f"{summary_df['Estimated Time (min)'].min():.0f} min")
+with metric_cols[4]:
+    effort_values = summary_df["Mean Effort"].dropna()
+    render_metric("Best Mean Effort", f"{effort_values.min():.2f}" if not effort_values.empty else "n/a")
 
 tab_map, tab_summary, tab_export = st.tabs(["Map", "Summary", "Export"])
 

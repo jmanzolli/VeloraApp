@@ -24,6 +24,8 @@ class DemandConfig:
     minimum_trips: float = 1.0
     minimum_docks: float = 8.0
     trips_per_dock: float = 4000.0
+    target_spacing_meters: float = 250.0
+    max_candidates: int = 250
 
 
 class CanadianPopulationDemandBuilder:
@@ -122,6 +124,47 @@ class CanadianPopulationDemandBuilder:
         clipped_metric["population"] = clipped_metric["population"] * clipped_metric["_area_share"]
         return clipped_metric.drop(columns=["_clipped_area", "_original_area", "_area_share"]).to_crs("EPSG:4326")
 
+    def generate_assumed_population_layer(
+        self,
+        bbox: dict[str, float],
+        total_population: float,
+        cell_size_meters: float = 500.0,
+        center_concentration: float = 1.8,
+    ) -> gpd.GeoDataFrame:
+        area = gpd.GeoDataFrame(
+            [{"geometry": box(float(bbox["west"]), float(bbox["south"]), float(bbox["east"]), float(bbox["north"]))}],
+            crs="EPSG:4326",
+        )
+        metric_crs = self.metric_crs(area)
+        area_metric = area.to_crs(metric_crs).geometry.iloc[0]
+        minx, miny, maxx, maxy = area_metric.bounds
+        size = max(100.0, float(cell_size_meters))
+        center = area_metric.centroid
+        max_distance = max(center.distance(box(minx, miny, minx, miny).centroid), 1.0)
+
+        rows: list[dict[str, Any]] = []
+        idx = 1
+        y = miny
+        while y < maxy:
+            x = minx
+            while x < maxx:
+                cell = box(x, y, min(x + size, maxx), min(y + size, maxy)).intersection(area_metric)
+                if not cell.is_empty and cell.area > 0:
+                    centroid = cell.centroid
+                    normalized_distance = min(1.0, centroid.distance(center) / max_distance)
+                    weight = max(0.15, (1.0 - normalized_distance) ** max(0.1, float(center_concentration)))
+                    rows.append({"area_name": f"assumed_cell_{idx}", "weight": weight, "geometry": cell})
+                    idx += 1
+                x += size
+            y += size
+
+        assumed = gpd.GeoDataFrame(rows, geometry="geometry", crs=metric_crs)
+        if assumed.empty:
+            raise ValueError("Selected area is too small to generate assumed population cells.")
+        assumed["population"] = assumed["weight"] / assumed["weight"].sum() * max(0.0, float(total_population))
+        assumed["source"] = "assumed_population_grid"
+        return assumed.drop(columns=["weight"]).to_crs("EPSG:4326")
+
     def generate_station_table(
         self,
         population_gdf: gpd.GeoDataFrame,
@@ -156,12 +199,37 @@ class CanadianPopulationDemandBuilder:
         ]
         points["Latitude"] = points.geometry.y
         points["Longitude"] = points.geometry.x
-        points["source"] = "canadian_population_polygon"
+        if "source" not in points:
+            points["source"] = "canadian_population_polygon"
+
+        points = self.apply_candidate_density(points, config)
 
         station_table = points[
             ["Station_Name", "Latitude", "Longitude", "Trips", "estimated_docks", "population", "area_name", "source"]
         ].copy()
         return station_table.reset_index(drop=True), points.reset_index(drop=True)
+
+    def apply_candidate_density(self, points: gpd.GeoDataFrame, config: DemandConfig) -> gpd.GeoDataFrame:
+        spacing = max(0.0, float(config.target_spacing_meters))
+        max_candidates = max(0, int(config.max_candidates))
+        ranked = points.sort_values("Trips", ascending=False).reset_index(drop=True)
+        if spacing <= 0:
+            selected = ranked
+        else:
+            metric = ranked.to_crs(self.metric_crs(ranked))
+            selected_indexes: list[int] = []
+            selected_geometries = []
+            for idx, row in metric.iterrows():
+                if selected_geometries and min(row.geometry.distance(geometry) for geometry in selected_geometries) < spacing:
+                    continue
+                selected_indexes.append(idx)
+                selected_geometries.append(row.geometry)
+                if max_candidates and len(selected_indexes) >= max_candidates:
+                    break
+            selected = ranked.loc[selected_indexes]
+        if max_candidates:
+            selected = selected.head(max_candidates)
+        return selected.sort_index().reset_index(drop=True)
 
     def find_population_column(self, gdf: gpd.GeoDataFrame) -> str | None:
         return self._find_column(gdf.columns, self.POPULATION_ALIASES)

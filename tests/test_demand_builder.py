@@ -60,6 +60,17 @@ class CanadianPopulationDemandBuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "minimum population"):
             self.builder.generate_station_table(prepared, DemandConfig(minimum_population=50))
 
+    def test_generate_assumed_population_layer_matches_requested_total(self) -> None:
+        assumed = self.builder.generate_assumed_population_layer(
+            {"north": 45.53, "south": 45.50, "east": -73.56, "west": -73.61},
+            total_population=10000,
+            cell_size_meters=500,
+            center_concentration=1.5,
+        )
+        self.assertGreater(len(assumed), 1)
+        self.assertAlmostEqual(float(assumed["population"].sum()), 10000.0, places=6)
+        self.assertTrue((assumed["source"] == "assumed_population_grid").all())
+
 
 if __name__ == "__main__":
     unittest.main()
