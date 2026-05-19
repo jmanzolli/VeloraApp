@@ -13,6 +13,7 @@ import pandas as pd
 from plotly.utils import PlotlyJSONEncoder
 from shapely.geometry import LineString, MultiLineString, Point
 
+from ui.effort import EffortCalculator
 from ui.optimizer import load_network
 
 
@@ -72,6 +73,8 @@ class RoutePlanner:
         network = load_network(uploaded_path)
         if network.crs is None:
             network = network.set_crs("EPSG:4326", allow_override=True)
+        if {"elev_start_m", "elev_end_m"}.issubset(network.columns) and network[["elev_start_m", "elev_end_m"]].notna().any().all():
+            network = EffortCalculator().score_dataframe(network)
         return network
 
     def build_graph(self, network_gdf: gpd.GeoDataFrame) -> nx.DiGraph:

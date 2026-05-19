@@ -17,6 +17,12 @@ navigation = st.navigation(
                 default=True,
             ),
         ],
+        "Explore Montreal": [
+            st.Page(
+                ROOT_DIR / "pages" / "Montreal_Route_Finder.py",
+                title="Montreal Route Finder",
+            ),
+        ],
         "Prepare Inputs": [
             st.Page(
                 ROOT_DIR / "pages" / "Population_Demand_Builder.py",

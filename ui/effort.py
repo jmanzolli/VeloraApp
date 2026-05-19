@@ -35,6 +35,8 @@ class EffortCalculator:
         self.config = config or EffortConfig()
 
     def make_directed(self, edges: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        if "direction" in edges and edges["direction"].notna().any():
+            return edges.copy().reset_index(drop=True)
         rows: list[pd.Series] = []
         for _, row in edges.iterrows():
             geom = row.geometry
