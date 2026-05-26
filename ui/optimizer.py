@@ -14,8 +14,6 @@ import plotly.graph_objects as go
 from deap import base, creator, tools
 from shapely.geometry import LineString, MultiLineString, Point
 
-from ui.effort import ensure_effort_columns
-
 
 REQUIRED_STATION_COLUMNS = {"Station_Name", "Latitude", "Longitude", "Trips"}
 SUPPORTED_VECTOR_SUFFIXES = {".gpkg", ".geojson", ".json", ".shp", ".parquet"}
@@ -138,7 +136,7 @@ def load_network(uploaded_path: str | Path) -> gpd.GeoDataFrame:
         network_gdf["length"] = pd.to_numeric(network_gdf["length"], errors="coerce")
         network_gdf["length"] = network_gdf["length"].fillna(network_gdf.geometry.length)
     network_gdf = network_gdf.dropna(subset=["geometry"]).reset_index(drop=True)
-    return ensure_effort_columns(network_gdf)
+    return network_gdf
 
 
 def build_station_geodataframe(stations_df: pd.DataFrame) -> gpd.GeoDataFrame:
@@ -193,8 +191,8 @@ def generate_candidates(
     return gpd.GeoDataFrame(rows, crs=metric.crs)
 
 
-def build_graph(network_gdf: gpd.GeoDataFrame) -> nx.DiGraph:
-    graph = nx.DiGraph()
+def build_graph(network_gdf: gpd.GeoDataFrame) -> nx.Graph:
+    graph = nx.Graph()
     for _, row in network_gdf.iterrows():
         geom = row.geometry
         if geom is None or geom.is_empty:
@@ -209,18 +207,7 @@ def build_graph(network_gdf: gpd.GeoDataFrame) -> nx.DiGraph:
                     v,
                     lts=float(row["lts"]),
                     length=float(segment_length),
-                    effort_exposure=float(row["effort_exposure"]) if pd.notna(row.get("effort_exposure")) else np.nan,
-                    steepness_level=float(row["steepness_level"]) if pd.notna(row.get("steepness_level")) else np.nan,
                 )
-                if not bool(row.get("one_way", False)) and str(row.get("direction", "")).lower() not in {"forward", "reverse"}:
-                    graph.add_edge(
-                        v,
-                        u,
-                        lts=float(row["lts"]),
-                        length=float(segment_length),
-                        effort_exposure=float(row["effort_exposure"]) if pd.notna(row.get("effort_exposure")) else np.nan,
-                        steepness_level=float(row["steepness_level"]) if pd.notna(row.get("steepness_level")) else np.nan,
-                    )
     return graph
 
 
@@ -239,7 +226,7 @@ def build_links_dataframe(candidates_gdf: gpd.GeoDataFrame, graph: nx.Graph) -> 
         .drop_duplicates()
         .reset_index(drop=True)
     )
-    for (_, left), (_, right) in itertools.permutations(unique_candidates.iterrows(), 2):
+    for (_, left), (_, right) in itertools.combinations(unique_candidates.iterrows(), 2):
         if left["graph_node"] == right["graph_node"]:
             continue
         try:
@@ -258,9 +245,6 @@ def build_links_dataframe(candidates_gdf: gpd.GeoDataFrame, graph: nx.Graph) -> 
                 "to_node": right["graph_node"],
                 "total_length": float(sum(edge["length"] for edge in edge_data)),
                 "mean_lts": float(np.mean([edge["lts"] for edge in edge_data])),
-                "mean_effort": float(np.nanmean([edge.get("effort_exposure", np.nan) / max(edge["length"], 1e-9) for edge in edge_data])),
-                "effort_exposure": float(np.nansum([edge.get("effort_exposure", np.nan) for edge in edge_data])),
-                "max_steepness_level": float(np.nanmax([edge.get("steepness_level", np.nan) for edge in edge_data])),
             }
         )
     links_df = pd.DataFrame(rows).drop_duplicates(subset=["from_node", "to_node"])
@@ -331,15 +315,15 @@ def prepare_problem(
     nodes_df["y"] = nodes_df.geometry.y
 
     lts: dict[tuple[Any, Any], float] = {}
-    effort: dict[tuple[Any, Any], float] = {}
     costs: dict[tuple[Any, Any], float] = {}
     for _, row in links_df.iterrows():
         i, j = row["from_node"], row["to_node"]
         lts_val = float(row["mean_lts"])
         cost = float(row["total_length"]) * upgrade_cost_per_meter_from_lts(lts_val, config)
         lts[(i, j)] = lts_val
-        effort[(i, j)] = float(row["effort_exposure"]) if pd.notna(row["effort_exposure"]) else 0.0
+        lts[(j, i)] = lts_val
         costs[(i, j)] = cost
+        costs[(j, i)] = cost
 
     data = {
         "N": nodes_df["node"].tolist(),
@@ -347,7 +331,6 @@ def prepare_problem(
         "D": dict(zip(nodes_df["node"], nodes_df["demand"])),
         "D_peak": dict(zip(nodes_df["node"], nodes_df["estimated_docks"])),
         "LTS": lts,
-        "EFFORT": effort,
         "C_up": costs,
         "C_dock": float(config.dock_unit_cost),
         "C_station": float(config.station_fixed_cost),
@@ -368,7 +351,6 @@ class NSGARunner:
         self._demand = dict(data["D"])
         self._peak = dict(data["D_peak"])
         self._lts = dict(data["LTS"])
-        self._effort = dict(data.get("EFFORT", {}))
         self._upgrade_cost = dict(data["C_up"])
         self._dock_cost = float(data["C_dock"])
         self._station_cost = float(data.get("C_station", 0.0))
@@ -384,12 +366,8 @@ class NSGARunner:
         random.seed(config.seed)
         np.random.seed(config.seed)
 
-        if "BixiDatasetFitnessMulti" in creator.__dict__ and len(creator.BixiDatasetFitnessMulti.weights) != 4:
-            del creator.BixiDatasetFitnessMulti
-            if "BixiDatasetIndividual" in creator.__dict__:
-                del creator.BixiDatasetIndividual
         if "BixiDatasetFitnessMulti" not in creator.__dict__:
-            creator.create("BixiDatasetFitnessMulti", base.Fitness, weights=(1.0, -1.0, -1.0, -1.0))
+            creator.create("BixiDatasetFitnessMulti", base.Fitness, weights=(1.0, -1.0, -1.0))
         if "BixiDatasetIndividual" not in creator.__dict__:
             creator.create("BixiDatasetIndividual", list, fitness=creator.BixiDatasetFitnessMulti)
 
@@ -414,9 +392,6 @@ class NSGARunner:
 
     def get_upgrade_cost(self, i: Any, j: Any) -> float:
         return float(self._upgrade_cost.get((i, j), self._upgrade_cost.get((j, i), 0.0)))
-
-    def get_effort(self, i: Any, j: Any) -> float:
-        return float(self._effort.get((i, j), 0.0))
 
     def decode(self, individual: list[float]) -> tuple[dict[Any, int], dict[tuple[Any, Any], int], dict[Any, float]]:
         y_vals = np.array(individual[: self.n_y], dtype=float)
@@ -511,7 +486,7 @@ class NSGARunner:
         individual[:] = self.encode(y, x, z)
         return individual
 
-    def evaluate(self, individual: list[float]) -> tuple[float, float, float, float]:
+    def evaluate(self, individual: list[float]) -> tuple[float, float, float]:
         self.repair(individual)
         y, x, z = self.decode(individual)
         z1 = sum(self._demand[node] * y[node] for node in self._nodes)
@@ -521,9 +496,8 @@ class NSGARunner:
             + self._dock_cost * sum(z[node] for node in self._nodes)
             + self._station_cost * sum(y.values())
         )
-        z4 = sum(self.get_effort(i, j) * x[(i, j)] for (i, j) in self._links)
         penalty = 1e6 * self.constraint_violation(y, x, z)
-        return z1 - penalty, z2 + penalty, z3 + penalty, z4 + penalty
+        return z1 - penalty, z2 + penalty, z3 + penalty
 
     def mutate(self, individual: list[float], indpb: float = 0.02, z_sigma: float = 0.1) -> tuple[list[float]]:
         for idx in range(self.n_y + self.n_x):
@@ -541,7 +515,7 @@ class NSGARunner:
         y: dict[Any, int],
         x: dict[tuple[Any, Any], int],
         z: dict[Any, float],
-    ) -> tuple[float, float, float, float, float]:
+    ) -> tuple[float, float, float, float]:
         z1 = sum(self._demand[node] * y[node] for node in self._nodes)
         z2 = sum(self.get_lts(i, j) * x[(i, j)] for (i, j) in self._links)
         z3 = (
@@ -549,8 +523,7 @@ class NSGARunner:
             + self._dock_cost * sum(z[node] for node in self._nodes)
             + self._station_cost * sum(y.values())
         )
-        z4 = sum(self.get_effort(i, j) * x[(i, j)] for (i, j) in self._links)
-        return z1, z2, z3, z4, self.constraint_violation(y, x, z)
+        return z1, z2, z3, self.constraint_violation(y, x, z)
 
     def run(self) -> tuple[pd.DataFrame, list[list[float]]]:
         _notify(self.progress_callback, "optimization", "Initializing NSGA-II population", 0.58)
@@ -589,7 +562,7 @@ class NSGARunner:
         _notify(self.progress_callback, "postprocess", "Scoring final population and selecting representative solutions", 0.9)
         for individual in population:
             y, x, z = self.decode(individual)
-            z1, z2, z3, z4, violation = self.compute_objectives(y, x, z)
+            z1, z2, z3, violation = self.compute_objectives(y, x, z)
             selected_stations = [node for node in self._nodes if y[node] == 1]
             selected_links = [edge for edge in self._links if x[edge] == 1]
             rows.append(
@@ -598,7 +571,6 @@ class NSGARunner:
                     "Z1_demand": z1,
                     "Z2_stress": z2,
                     "Z3_cost": z3,
-                    "Z4_effort": z4,
                     "cv": violation,
                     "selected_stations": len(selected_stations),
                     "selected_links": len(selected_links),
@@ -621,15 +593,12 @@ def build_solution_catalog(
         stations = [node for node in runner._nodes if y[node] == 1]
         links = [edge for edge in runner._links if x[edge] == 1]
         avg_lts = float(row["Z2_stress"]) / max(1, len(links))
-        avg_effort = float(row.get("Z4_effort", 0.0)) / max(1, len(links))
         return {
             "metrics": {
                 "demand": float(row["Z1_demand"]),
                 "stress": float(row["Z2_stress"]),
                 "avg_lts": avg_lts,
                 "cost": float(row["Z3_cost"]),
-                "effort": float(row.get("Z4_effort", 0.0)),
-                "avg_effort": avg_effort,
                 "selected_stations": len(stations),
                 "selected_links": len(links),
                 "constraint_violation": float(row["cv"]),
@@ -642,9 +611,8 @@ def build_solution_catalog(
     catalog["Best Demand"] = unpack(feasible.sort_values("Z1_demand", ascending=False).iloc[0])
     catalog["Best Stress"] = unpack(feasible.sort_values("Z2_stress", ascending=True).iloc[0])
     catalog["Best Cost"] = unpack(feasible.sort_values("Z3_cost", ascending=True).iloc[0])
-    catalog["Best Effort"] = unpack(feasible.sort_values("Z4_effort", ascending=True).iloc[0])
 
-    normalized = feasible[["Z1_demand", "Z2_stress", "Z3_cost", "Z4_effort"]].copy()
+    normalized = feasible[["Z1_demand", "Z2_stress", "Z3_cost"]].copy()
     normalized["Z1_demand"] = 1 - (
         (normalized["Z1_demand"] - normalized["Z1_demand"].min())
         / max(1e-9, normalized["Z1_demand"].max() - normalized["Z1_demand"].min())
@@ -655,9 +623,6 @@ def build_solution_catalog(
     normalized["Z3_cost"] = (
         normalized["Z3_cost"] - normalized["Z3_cost"].min()
     ) / max(1e-9, normalized["Z3_cost"].max() - normalized["Z3_cost"].min())
-    normalized["Z4_effort"] = (
-        normalized["Z4_effort"] - normalized["Z4_effort"].min()
-    ) / max(1e-9, normalized["Z4_effort"].max() - normalized["Z4_effort"].min())
     balanced_idx = (normalized.pow(2).sum(axis=1)).sort_values().index[0]
     catalog["Balanced"] = unpack(feasible.loc[balanced_idx])
     return catalog
@@ -823,11 +788,14 @@ def create_solution_map(
     candidate_rows_4326["is_selected"] = candidate_rows_4326["node_key"].isin(selected_node_keys)
 
     link_lookup = links_df.copy()
-    link_lookup["edge_key"] = link_lookup.apply(lambda row: (repr(row["from_node"]), repr(row["to_node"])), axis=1)
+    link_lookup["edge_key"] = link_lookup.apply(
+        lambda row: tuple(sorted((repr(row["from_node"]), repr(row["to_node"])))),
+        axis=1,
+    )
     selected_link_details: list[dict[str, Any]] = []
     for edge in solution["selected_links"]:
         matches = link_lookup[
-            link_lookup["edge_key"] == (repr(edge[0]), repr(edge[1]))
+            link_lookup["edge_key"] == tuple(sorted((repr(edge[0]), repr(edge[1]))))
         ]
         if matches.empty:
             continue
