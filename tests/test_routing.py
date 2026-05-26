@@ -61,6 +61,51 @@ class RoutePlannerTests(unittest.TestCase):
         node = self.planner.nearest_graph_node(Point(0.1, 0.1), graph)
         self.assertEqual(node, (0.0, 0.0))
 
+    def test_selected_points_snap_to_connected_nearby_nodes(self) -> None:
+        graph = nx.DiGraph()
+        graph.graph["crs"] = "EPSG:3857"
+        graph.add_edge((0.0, 0.0), (0.0, 1.0))
+        graph.add_edge((1.0, 0.0), (2.0, 0.0))
+
+        origin, destination = self.planner.snap_connected_endpoint_nodes(
+            0.0,
+            0.0,
+            2.0,
+            0.0,
+            graph,
+            candidate_count=3,
+        )
+
+        self.assertEqual(origin, (1.0, 0.0))
+        self.assertEqual(destination, (2.0, 0.0))
+
+    def test_effort_network_offers_lowest_effort_route(self) -> None:
+        graph = nx.DiGraph()
+        graph.graph["crs"] = "EPSG:3857"
+        for u, v, length, effort in [
+            ((0.0, 0.0), (2.0, 0.0), 2.0, 20.0),
+            ((0.0, 0.0), (0.0, 2.0), 2.0, 2.0),
+            ((0.0, 2.0), (2.0, 0.0), 2.0, 2.0),
+        ]:
+            graph.add_edge(
+                u,
+                v,
+                geometry=LineString([u, v]),
+                length_m=length,
+                lts=2.0,
+                stress_exposure=length * 2.0,
+                uphill_gain_m=0.0,
+                uphill_grade_pct=0.0,
+                effort_exposure=effort,
+                steepness_level=3.5,
+            )
+
+        routes = self.planner.calculate_routes(graph, (0.0, 0.0), (2.0, 0.0))
+        by_label = {label: route for route in routes for label in route.labels}
+
+        self.assertIn("Lowest Effort", by_label)
+        self.assertEqual(by_label["Lowest Effort"].distance_m, 4.0)
+
     @patch("osmnx.geocode")
     def test_geocode_falls_back_to_quebec_for_montreal_area_places(self, geocode) -> None:
         geocode.side_effect = [ValueError("not in municipality"), (45.4856917, -73.596562)]

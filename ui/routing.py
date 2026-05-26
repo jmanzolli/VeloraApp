@@ -164,13 +164,51 @@ class RoutePlanner:
         point_metric = point_4326.to_crs(graph.graph["crs"]).iloc[0]
         return self.nearest_graph_node(point_metric, graph)
 
+    def snap_connected_endpoint_nodes(
+        self,
+        origin_longitude: float,
+        origin_latitude: float,
+        destination_longitude: float,
+        destination_latitude: float,
+        graph: nx.Graph,
+        candidate_count: int = 30,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
+        points_4326 = gpd.GeoSeries(
+            [
+                Point(float(origin_longitude), float(origin_latitude)),
+                Point(float(destination_longitude), float(destination_latitude)),
+            ],
+            crs="EPSG:4326",
+        )
+        origin_point, destination_point = points_4326.to_crs(graph.graph["crs"]).tolist()
+        origin_candidates = self.nearest_graph_nodes(origin_point, graph, candidate_count)
+        destination_candidates = self.nearest_graph_nodes(destination_point, graph, candidate_count)
+        candidate_pairs = sorted(
+            (
+                (origin_distance + destination_distance, origin_node, destination_node)
+                for origin_node, origin_distance in origin_candidates
+                for destination_node, destination_distance in destination_candidates
+                if origin_node != destination_node
+            ),
+            key=lambda candidate: candidate[0],
+        )
+        for _, origin_node, destination_node in candidate_pairs:
+            if nx.has_path(graph, origin_node, destination_node):
+                return origin_node, destination_node
+        raise ValueError("No connected cycling route is available for the selected locations in the current network coverage.")
+
     @staticmethod
     def nearest_graph_node(point: Point, graph: nx.Graph) -> tuple[float, float]:
+        return RoutePlanner.nearest_graph_nodes(point, graph, 1)[0][0]
+
+    @staticmethod
+    def nearest_graph_nodes(point: Point, graph: nx.Graph, count: int) -> list[tuple[tuple[float, float], float]]:
         nodes = list(graph.nodes)
         if not nodes:
             raise ValueError("Graph has no nodes.")
         distances = np.array([point.distance(Point(node)) for node in nodes], dtype=float)
-        return nodes[int(np.argmin(distances))]
+        nearest_indexes = np.argsort(distances)[: max(1, min(int(count), len(nodes)))]
+        return [(nodes[int(index)], float(distances[int(index)])) for index in nearest_indexes]
 
     def calculate_routes(
         self,

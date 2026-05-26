@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import base64
 import difflib
+import hashlib
 import mimetypes
 from pathlib import Path
 
 import folium
+import geopandas as gpd
 import pandas as pd
 import requests
 import streamlit as st
 from streamlit_folium import st_folium
 from streamlit_searchbox import st_searchbox
 
+from ui.effort import EffortCalculator, fetch_online_endpoint_elevations
+from ui.lts import CityNetworkBuilder, LTSCalculator, LTSFeatureExtractor
+from ui.lts.builder import BoundingBox
+from ui.lts.export import prepare_optimizer_export
 from ui.routing import RouteEndpoint, RoutePlanner, RouteResult
 from ui.storage import list_lts_artifacts
 
@@ -31,6 +37,7 @@ MAP_STYLES = {
 }
 MONTREAL_CENTER = (45.5089, -73.5617)
 MONTREAL_SEARCH_BOUNDS = (-74.05, 45.35, -73.35, 45.75)
+GENERATED_NETWORK_DIR = Path(__file__).resolve().parents[1] / "app_data" / "artifacts" / "lts" / "montreal_route_finder"
 MONTREAL_CONTEXT_TERMS = (
     "montreal",
     "montréal",
@@ -300,25 +307,77 @@ st.markdown(
 )
 
 
-def montreal_network_path() -> Path:
+def generated_network_bounds(
+    origin_coords: tuple[float, float],
+    destination_coords: tuple[float, float],
+) -> BoundingBox:
+    margin = 0.022
+    west, south, east, north = MONTREAL_SEARCH_BOUNDS
+    return BoundingBox(
+        north=min(north, max(origin_coords[0], destination_coords[0]) + margin),
+        south=max(south, min(origin_coords[0], destination_coords[0]) - margin),
+        east=min(east, max(origin_coords[1], destination_coords[1]) + margin),
+        west=max(west, min(origin_coords[1], destination_coords[1]) - margin),
+    )
+
+
+def generated_network_path(bounds: BoundingBox) -> Path:
+    signature = f"{bounds.north:.3f}_{bounds.south:.3f}_{bounds.east:.3f}_{bounds.west:.3f}"
+    digest = hashlib.sha1(signature.encode("ascii")).hexdigest()[:12]
+    return GENERATED_NETWORK_DIR / f"montreal_{digest}.geojson"
+
+
+def build_generated_network(origin_coords: tuple[float, float], destination_coords: tuple[float, float]) -> Path:
+    bounds = generated_network_bounds(origin_coords, destination_coords)
+    path = generated_network_path(bounds)
+    if path.exists():
+        existing = gpd.read_file(path)
+        if "effort_exposure" in existing and existing["effort_exposure"].notna().any():
+            return path
+    else:
+        raw_edges = CityNetworkBuilder().build_network(bbox=bounds)
+        normalized = LTSFeatureExtractor().normalize(raw_edges)
+        scored = LTSCalculator().score_dataframe(normalized)
+        existing = prepare_optimizer_export(scored)
+    if existing.empty:
+        raise ValueError("No routable cycling streets were returned for these Montreal locations.")
+    elevated = fetch_online_endpoint_elevations(existing)
+    enriched = EffortCalculator().score_dataframe(elevated)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    enriched.to_file(path, driver="GeoJSON")
+    return path
+
+
+def montreal_network_path(
+    origin_coords: tuple[float, float] | None = None,
+    destination_coords: tuple[float, float] | None = None,
+) -> Path:
     artifacts = [
         artifact
         for artifact in list_lts_artifacts()
         if str(artifact.get("metadata", {}).get("city_name", "")).lower() == "montreal"
     ]
-    if not artifacts:
-        raise FileNotFoundError("No saved Montreal network is available yet.")
-    preferred = next((artifact for artifact in artifacts if artifact.get("artifact_id") == "lts-20260515-122729"), artifacts[0])
-    path = Path(str(preferred["file_path"]))
-    if not path.exists():
-        raise FileNotFoundError("The saved Montreal network file could not be found.")
-    return path
+    if artifacts:
+        preferred = next((artifact for artifact in artifacts if artifact.get("artifact_id") == "lts-20260515-122729"), artifacts[0])
+        path = Path(str(preferred["file_path"]))
+        if path.exists():
+            network = gpd.read_file(path)
+            if "effort_exposure" in network and network["effort_exposure"].notna().any():
+                return path
+            if origin_coords is None or destination_coords is None:
+                return path
+    if origin_coords is not None and destination_coords is not None:
+        return build_generated_network(origin_coords, destination_coords)
+    raise FileNotFoundError("Select two suggested Montreal locations to prepare a route network.")
 
 
 @st.cache_resource(show_spinner=False)
-def load_montreal_graph() -> tuple[RoutePlanner, object, object]:
+def load_montreal_graph(
+    origin_coords: tuple[float, float] | None = None,
+    destination_coords: tuple[float, float] | None = None,
+) -> tuple[RoutePlanner, object, object]:
     planner = RoutePlanner()
-    network = planner.load_lts_network(montreal_network_path())
+    network = planner.load_lts_network(montreal_network_path(origin_coords, destination_coords))
     graph = planner.build_graph(network)
     return planner, network, graph
 
@@ -331,14 +390,23 @@ def calculate_routes(
     origin_coords: tuple[float, float] | None = None,
     destination_coords: tuple[float, float] | None = None,
 ) -> dict[str, object]:
-    planner, network, graph = load_montreal_graph()
+    planner, network, graph = load_montreal_graph(origin_coords, destination_coords)
+    connected_nodes = None
+    if origin_coords is not None and destination_coords is not None:
+        connected_nodes = planner.snap_connected_endpoint_nodes(
+            origin_coords[1],
+            origin_coords[0],
+            destination_coords[1],
+            destination_coords[0],
+            graph,
+        )
     origin = (
-        endpoint_from_coords(planner, "Origin", origin_coords, graph, query=origin_text)
+        endpoint_from_coords(planner, "Origin", origin_coords, graph, query=origin_text, node=connected_nodes[0] if connected_nodes else None)
         if origin_coords
         else planner.geocode_endpoint("Origin", resolve_place_text(origin_text), "Montreal, Quebec, Canada", graph)
     )
     destination = (
-        endpoint_from_coords(planner, "Destination", destination_coords, graph, query=destination_text)
+        endpoint_from_coords(planner, "Destination", destination_coords, graph, query=destination_text, node=connected_nodes[1] if connected_nodes else None)
         if destination_coords
         else planner.geocode_endpoint("Destination", resolve_place_text(destination_text), "Montreal, Quebec, Canada", graph)
     )
@@ -500,6 +568,7 @@ def endpoint_from_coords(
     coords: tuple[float, float],
     graph: object,
     query: str | None = None,
+    node: tuple[float, float] | None = None,
 ) -> RouteEndpoint:
     latitude, longitude = coords
     return RouteEndpoint(
@@ -507,7 +576,7 @@ def endpoint_from_coords(
         query=query or f"{latitude:.5f}, {longitude:.5f}",
         latitude=float(latitude),
         longitude=float(longitude),
-        node=planner.snap_lonlat_to_graph(longitude=float(longitude), latitude=float(latitude), graph=graph),
+        node=node or planner.snap_lonlat_to_graph(longitude=float(longitude), latitude=float(latitude), graph=graph),
     )
 
 
@@ -710,7 +779,7 @@ if find_button:
         st.error("Search for and select a destination from the location suggestions.")
     else:
         try:
-            with st.spinner("Finding Montreal cycling routes..."):
+            with st.spinner("Preparing LTS and cyclist-effort routes for the selected locations..."):
                 st.session_state["montreal_route_result"] = calculate_routes(
                     origin_choice,
                     destination_choice,
@@ -721,10 +790,7 @@ if find_button:
                 )
                 st.session_state["montreal_selected_route"] = "Balanced Comfort"
         except Exception as exc:
-            if input_mode == "Typing":
-                st.error("Could not find this Montreal-area place. Try a more specific address or click the map.")
-            else:
-                st.error(str(exc))
+            st.error(f"Could not calculate routes for the selected locations: {exc}")
 
 result = st.session_state.get("montreal_route_result")
 

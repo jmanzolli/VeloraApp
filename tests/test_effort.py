@@ -34,6 +34,9 @@ class EffortCalculatorTests(unittest.TestCase):
     def test_flat_edge_has_lowest_steepness_level(self) -> None:
         self.assertEqual(EffortCalculator().classify(length_m=100.0, uphill_grade_pct=0.0), 3.5)
 
+    def test_long_uphill_segment_is_not_always_lowest_level(self) -> None:
+        self.assertEqual(EffortCalculator().classify(length_m=100.0, uphill_grade_pct=8.0), 8.0)
+
     def test_geographic_geometry_is_measured_in_meters(self) -> None:
         edges = gpd.GeoDataFrame(
             [
