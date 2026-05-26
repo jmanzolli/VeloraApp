@@ -79,22 +79,6 @@ class RoutePlannerTests(unittest.TestCase):
         self.assertEqual(origin, (1.0, 0.0))
         self.assertEqual(destination, (2.0, 0.0))
 
-    def test_connected_graph_nodes_use_reachable_nearby_pair(self) -> None:
-        graph = nx.DiGraph()
-        graph.graph["crs"] = "EPSG:3857"
-        graph.add_edge((0.0, 0.0), (0.0, 1.0))
-        graph.add_edge((1.0, 0.0), (2.0, 0.0))
-
-        origin, destination = self.planner.connected_graph_nodes(
-            Point(0.0, 0.0),
-            Point(2.0, 0.0),
-            graph,
-            candidate_count=3,
-        )
-
-        self.assertEqual(origin, (1.0, 0.0))
-        self.assertEqual(destination, (2.0, 0.0))
-
     def test_effort_network_offers_lowest_effort_route(self) -> None:
         graph = nx.DiGraph()
         graph.graph["crs"] = "EPSG:3857"
