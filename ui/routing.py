@@ -13,8 +13,11 @@ import pandas as pd
 from plotly.utils import PlotlyJSONEncoder
 from shapely.geometry import LineString, MultiLineString, Point
 
-from ui.effort import EffortCalculator
 from ui.optimizer import load_network
+try:
+    from ui.effort import EffortCalculator
+except ImportError:
+    EffortCalculator = None
 
 
 @dataclass(frozen=True)
@@ -73,7 +76,11 @@ class RoutePlanner:
         network = load_network(uploaded_path)
         if network.crs is None:
             network = network.set_crs("EPSG:4326", allow_override=True)
-        if {"elev_start_m", "elev_end_m"}.issubset(network.columns) and network[["elev_start_m", "elev_end_m"]].notna().any().all():
+        if (
+            EffortCalculator is not None
+            and {"elev_start_m", "elev_end_m"}.issubset(network.columns)
+            and network[["elev_start_m", "elev_end_m"]].notna().any().all()
+        ):
             network = EffortCalculator().score_dataframe(network)
         return network
 
@@ -181,6 +188,15 @@ class RoutePlanner:
             crs="EPSG:4326",
         )
         origin_point, destination_point = points_4326.to_crs(graph.graph["crs"]).tolist()
+        return self.connected_graph_nodes(origin_point, destination_point, graph, candidate_count=candidate_count)
+
+    def connected_graph_nodes(
+        self,
+        origin_point: Point,
+        destination_point: Point,
+        graph: nx.Graph,
+        candidate_count: int = 30,
+    ) -> tuple[tuple[float, float], tuple[float, float]]:
         origin_candidates = self.nearest_graph_nodes(origin_point, graph, candidate_count)
         destination_candidates = self.nearest_graph_nodes(destination_point, graph, candidate_count)
         candidate_pairs = sorted(
