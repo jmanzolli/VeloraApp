@@ -136,11 +136,20 @@ class RoutePlanner:
         except ImportError as exc:
             raise RuntimeError("Route geocoding requires osmnx. Install project requirements and try again.") from exc
 
-        query = f"{place_text}, {city_context}" if city_context.strip() else place_text
-        try:
-            latitude, longitude = ox.geocode(query)
-        except Exception as exc:
-            raise ValueError(f"Could not geocode {label}: {query}. Try a more specific street or place name.") from exc
+        already_contextualized = "canada" in place_text.lower() or "quebec" in place_text.lower()
+        queries = [place_text if already_contextualized or not city_context.strip() else f"{place_text}, {city_context}"]
+        if city_context.strip() and "quebec" in city_context.lower():
+            queries.extend([f"{place_text}, Quebec, Canada", f"{place_text}, Canada"])
+        queries = list(dict.fromkeys(queries))
+        latitude = longitude = None
+        for query in queries:
+            try:
+                latitude, longitude = ox.geocode(query)
+                break
+            except Exception:
+                continue
+        if latitude is None or longitude is None:
+            raise ValueError(f"Could not geocode {label}: {place_text}. Try a more specific street or place name.")
         node = self.snap_lonlat_to_graph(longitude=longitude, latitude=latitude, graph=graph)
         return RouteEndpoint(
             label=label,

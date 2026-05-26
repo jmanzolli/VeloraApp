@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest.mock import patch
 
 import geopandas as gpd
 import networkx as nx
@@ -59,6 +60,29 @@ class RoutePlannerTests(unittest.TestCase):
         graph = self.build_test_graph()
         node = self.planner.nearest_graph_node(Point(0.1, 0.1), graph)
         self.assertEqual(node, (0.0, 0.0))
+
+    @patch("osmnx.geocode")
+    def test_geocode_falls_back_to_quebec_for_montreal_area_places(self, geocode) -> None:
+        geocode.side_effect = [ValueError("not in municipality"), (45.4856917, -73.596562)]
+
+        endpoint = self.planner.geocode_endpoint("Destination", "Westmount", "Montreal, Quebec, Canada", self.build_test_graph())
+
+        self.assertEqual(endpoint.query, "Westmount, Quebec, Canada")
+        self.assertEqual(geocode.call_args_list[0].args[0], "Westmount, Montreal, Quebec, Canada")
+        self.assertEqual(geocode.call_args_list[1].args[0], "Westmount, Quebec, Canada")
+
+    @patch("osmnx.geocode")
+    def test_geocode_does_not_duplicate_context_for_selected_suggestion(self, geocode) -> None:
+        geocode.return_value = (45.5088, -73.5540)
+
+        self.planner.geocode_endpoint(
+            "Destination",
+            "Ville-Marie, Montreal, Quebec, Canada",
+            "Montreal, Quebec, Canada",
+            self.build_test_graph(),
+        )
+
+        self.assertEqual(geocode.call_args.args[0], "Ville-Marie, Montreal, Quebec, Canada")
 
     def test_disconnected_graph_raises_clear_error(self) -> None:
         graph = self.build_test_graph()
