@@ -7,6 +7,9 @@ This repository is intentionally platform-only. Paper assets, exploratory notebo
 ## Product Capabilities
 
 - Upload station demand files and street-network files.
+- Generate a Canadian population-based station demand CSV when station trips do not exist yet.
+- Calculate an LTS-scored street network from a map-selected area, OSM streets, and optional municipal layers.
+- Compare point-to-point cycling routes by shortest distance, lowest LTS, and a balanced distance/stress objective.
 - Generate candidate station alternatives and corridor upgrade options.
 - Run an NSGA-II multi-objective optimization.
 - Review representative scenarios: `Balanced`, `Best Demand`, `Best Cost`, and `Best Stress`.
@@ -20,9 +23,12 @@ This repository is intentionally platform-only. Paper assets, exploratory notebo
 ```text
 .
 ├── streamlit_app.py              # Streamlit application entry point
+├── pages/                        # Streamlit pages for LTS and population-demand preparation
 ├── ui/
 │   ├── optimizer.py              # Data loading, graph construction, NSGA-II, map generation
 │   ├── storage.py                # Local saved-run and scenario-snapshot persistence
+│   ├── demand.py                 # Canadian population-to-demand generation
+│   ├── lts/                      # LTS network building, feature extraction, scoring, and export
 │   └── assets/
 │       ├── velora_badge.png      # App icon and brand mark
 │       └── velora_demo_run.json  # Pre-optimized demo scenario
@@ -62,6 +68,12 @@ http://127.0.0.1:8501
 
 To preview the product without uploading data, click **Load demo scenario** in the sidebar.
 
+Use **Demand** when there is no station CSV or station map yet. Start from assumptions or upload a Canadian census population polygon layer, draw/select the planning area, and save or export generated station candidates for the optimizer.
+
+Use **LTS Network Builder** to create a street-network file with `geometry` and `lts` from a map-selected area before running the optimizer or Route Planner.
+
+Use **Route Planner** to upload an LTS network, enter point A and point B as street/place names, and compare shortest, lowest-stress, and balanced routes.
+
 ## Input Data
 
 ### Station File
@@ -90,6 +102,8 @@ Supported aliases include:
 - `lon`, `lng`, `longitude` -> `Longitude`
 - `trips`, `total_trips`, `demand` -> `Trips`
 - `docks`, `estimated_docks` -> `estimated_docks`
+
+If historical station trips or mapped station positions are unavailable, generate this file from the **Demand** page. It can start from assumptions or accept Canadian census population polygons such as dissemination areas or census tracts, then outputs optimizer-ready artificial station candidates with the required fields.
 
 ### Network File
 

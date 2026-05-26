@@ -194,6 +194,7 @@ cython_debug/
 # Velora local runtime state
 # =========================
 app_data/runs/
+app_data/artifacts/
 cache/
 
 # Large/generated local study files kept outside normal app development.
