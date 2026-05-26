@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import Mock, patch
 
 import geopandas as gpd
+import requests
 from shapely.geometry import LineString
 
-from ui.effort import EffortCalculator
+from ui.effort import EffortCalculator, fetch_online_endpoint_elevations
 
 
 class EffortCalculatorTests(unittest.TestCase):
@@ -52,6 +54,37 @@ class EffortCalculatorTests(unittest.TestCase):
         scored = EffortCalculator().score_dataframe(edges)
         self.assertGreater(float(scored.iloc[0]["length"]), 50.0)
         self.assertEqual(float(scored.iloc[0]["steepness_level"]), 9.5)
+
+    @patch("ui.effort.requests.get")
+    def test_online_elevation_uses_open_meteo_by_default(self, get: Mock) -> None:
+        get.return_value.json.return_value = {"elevation": [20.0, 28.0]}
+        edges = gpd.GeoDataFrame(
+            [{"geometry": LineString([(-73.60, 45.50), (-73.59, 45.51)])}],
+            crs="EPSG:4326",
+        )
+
+        sampled = fetch_online_endpoint_elevations(edges)
+
+        get.return_value.raise_for_status.assert_called_once()
+        self.assertEqual(sampled.iloc[0]["elev_start_m"], 20.0)
+        self.assertEqual(sampled.iloc[0]["elev_end_m"], 28.0)
+        self.assertEqual(sampled.iloc[0]["elevation_source"], "Open-Meteo Copernicus DEM GLO-90")
+
+    @patch("ui.effort.requests.post")
+    @patch("ui.effort.requests.get")
+    def test_online_elevation_falls_back_when_primary_times_out(self, get: Mock, post: Mock) -> None:
+        get.side_effect = requests.Timeout("timeout")
+        post.return_value.json.return_value = {"results": [{"elevation": 20.0}, {"elevation": 28.0}]}
+        edges = gpd.GeoDataFrame(
+            [{"geometry": LineString([(-73.60, 45.50), (-73.59, 45.51)])}],
+            crs="EPSG:4326",
+        )
+
+        sampled = fetch_online_endpoint_elevations(edges)
+
+        post.return_value.raise_for_status.assert_called_once()
+        self.assertEqual(sampled.iloc[0]["elev_end_m"], 28.0)
+        self.assertEqual(sampled.iloc[0]["elevation_source"], "Open-Elevation fallback")
 
 
 if __name__ == "__main__":

@@ -813,6 +813,9 @@ with panel_col:
             """,
             unsafe_allow_html=True,
         )
+        if "elevation_source" in result["network"]:
+            source = str(result["network"]["elevation_source"].dropna().iloc[0])
+            st.caption(f"Elevation source: {source}.")
 
 with map_col:
     st.markdown('<div class="map-frame">', unsafe_allow_html=True)

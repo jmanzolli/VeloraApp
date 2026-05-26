@@ -133,7 +133,7 @@ def sample_dem_endpoints(edges: gpd.GeoDataFrame, raster_path: str) -> gpd.GeoDa
 
 
 def fetch_online_endpoint_elevations(edges: gpd.GeoDataFrame, batch_size: int = 100) -> gpd.GeoDataFrame:
-    """Fetch endpoint elevations from the public Open-Elevation-compatible API."""
+    """Fetch endpoint elevations with a batched primary source and fallback."""
     sampled = edges.to_crs("EPSG:4326").copy()
     endpoint_rows: list[tuple[float, float]] = []
     for geom in sampled.geometry:
@@ -141,16 +141,20 @@ def fetch_online_endpoint_elevations(edges: gpd.GeoDataFrame, batch_size: int = 
         endpoint_rows.extend([(coords[0][1], coords[0][0]), (coords[-1][1], coords[-1][0])])
 
     unique_endpoints = list(dict.fromkeys(endpoint_rows))
-    elevations: list[float] = []
-    for chunk in _chunks(unique_endpoints, batch_size):
-        payload = {"locations": [{"latitude": lat, "longitude": lon} for lat, lon in chunk]}
-        response = requests.post("https://api.open-elevation.com/api/v1/lookup", json=payload, timeout=30)
-        response.raise_for_status()
-        elevations.extend(float(item["elevation"]) for item in response.json()["results"])
+    elevation_by_point: dict[tuple[float, float], float] = {}
+    providers: set[str] = set()
+    for chunk in _chunks(unique_endpoints, min(max(1, int(batch_size)), 100)):
+        try:
+            values = _fetch_open_meteo_chunk(chunk)
+            providers.add("Open-Meteo Copernicus DEM GLO-90")
+        except requests.RequestException:
+            values = _fetch_open_elevation_chunk(chunk)
+            providers.add("Open-Elevation fallback")
+        elevation_by_point.update(dict(zip(chunk, values)))
 
-    elevation_by_point = dict(zip(unique_endpoints, elevations))
     sampled["elev_start_m"] = [elevation_by_point[point] for point in endpoint_rows[0::2]]
     sampled["elev_end_m"] = [elevation_by_point[point] for point in endpoint_rows[1::2]]
+    sampled["elevation_source"] = "; ".join(sorted(providers))
     return sampled.to_crs(edges.crs)
 
 
@@ -167,3 +171,30 @@ def ensure_effort_columns(network: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def _chunks(values: list[tuple[float, float]], size: int) -> Iterable[list[tuple[float, float]]]:
     for idx in range(0, len(values), size):
         yield values[idx : idx + size]
+
+
+def _fetch_open_meteo_chunk(chunk: list[tuple[float, float]]) -> list[float]:
+    response = requests.get(
+        "https://api.open-meteo.com/v1/elevation",
+        params={
+            "latitude": ",".join(str(point[0]) for point in chunk),
+            "longitude": ",".join(str(point[1]) for point in chunk),
+        },
+        headers={"User-Agent": "BikeNetworkPlanner/1.0"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    values = response.json().get("elevation", [])
+    if len(values) != len(chunk):
+        raise requests.RequestException("Elevation response did not match requested coordinate count.")
+    return [float(value) for value in values]
+
+
+def _fetch_open_elevation_chunk(chunk: list[tuple[float, float]]) -> list[float]:
+    values: list[float] = []
+    for subchunk in _chunks(chunk, 25):
+        payload = {"locations": [{"latitude": lat, "longitude": lon} for lat, lon in subchunk]}
+        response = requests.post("https://api.open-elevation.com/api/v1/lookup", json=payload, timeout=20)
+        response.raise_for_status()
+        values.extend(float(item["elevation"]) for item in response.json()["results"])
+    return values
