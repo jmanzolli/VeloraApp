@@ -11,3 +11,4 @@ openpyxl>=3.1
 osmnx>=1.9
 folium>=0.17
 streamlit-folium>=0.24
+streamlit-searchbox==0.1.14
