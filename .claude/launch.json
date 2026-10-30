@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "velora",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": ["-c", "cd /Users/natomanzolli/Documents/GitHub/BIXIdataset && exec .venv/bin/python -m streamlit run streamlit_app.py --server.port 8501 --server.headless true"],
+      "port": 8501
+    }
+  ]
+}
